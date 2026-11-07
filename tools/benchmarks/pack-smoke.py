@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -103,10 +104,20 @@ def panel_smoke(server):
     with opener.open(login, timeout=8) as response:
         if not json.load(response)["authenticated"]:
             raise RuntimeError("Panel session was not authenticated")
-    with opener.open(PANEL_ADDRESS + "/api/state", timeout=8) as response:
-        if json.load(response)["world"] != "smoke-world":
-            raise RuntimeError("Panel reported a different world")
-    print("Authenticated panel state passed.")
+    deadline = time.monotonic() + 60
+    while True:
+        try:
+            with opener.open(PANEL_ADDRESS + "/api/state", timeout=8) as response:
+                if json.load(response)["world"] != "smoke-world":
+                    raise RuntimeError("Panel reported a different world")
+            print("Authenticated panel state passed.")
+            return
+        except urllib.error.HTTPError as failure:
+            # RCT can register its trainers after the web listener opens.
+            if failure.code != 503 or time.monotonic() >= deadline:
+                raise
+            failure.close()
+            time.sleep(2)
 
 
 def wait_for(process, log, marker, seconds):
