@@ -33,7 +33,7 @@ jobs:
         run: npm ci --prefix web
       - name: Test and build server mod
         run: ./gradlew --no-daemon --max-workers=1 test remapJar
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cobbleverse-server-admin-${{ github.sha }}
           path: build/libs/cobbleverse-generation-control-*.jar
