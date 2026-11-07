@@ -3,6 +3,7 @@ package br.com.cobbleverse.generations.web;
 import br.com.cobbleverse.generations.GenerationControl;
 import br.com.cobbleverse.generations.config.ConfigStore;
 import br.com.cobbleverse.generations.data.PolicyResources;
+import br.com.cobbleverse.generations.integration.PcInspection;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
@@ -30,6 +31,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -50,6 +52,7 @@ public final class WebPanelServer {
     private final ThreadPoolExecutor executor;
     private final WebPanelService service;
     private final PanelGameRequests gameRequests = new PanelGameRequests(2, Duration.ofSeconds(3));
+    private final Semaphore pcReads = new Semaphore(1);
     private final Map<String, Long> sessions = new ConcurrentHashMap<>();
     private final Map<String, Long> lastAction = new ConcurrentHashMap<>();
     // All connections come from loopback, including connections from the proxy.
@@ -260,6 +263,11 @@ public final class WebPanelServer {
             json(exchange, 200, Map.of("ready", results != null, "items", results == null ? List.of() : results));
             return;
         }
+        if (path.equals("/api/pc/players") || path.equals("/api/pc/box")) {
+            if (!method.equals("GET")) { methodNotAllowed(exchange, "GET"); return; }
+            inspectPc(exchange, path);
+            return;
+        }
         if (path.equals("/api/action") && method.equals("POST")) {
             throttle(sessionId);
             var payload = ConfigStore.GSON.fromJson(body(exchange), WebPanelService.ActionRequest.class);
@@ -271,6 +279,46 @@ public final class WebPanelServer {
             methodNotAllowed(exchange, path.equals("/api/action") ? "POST" : "GET"); return;
         }
         json(exchange, 404, Map.of("message", "Rota não encontrada."));
+    }
+
+    private void inspectPc(HttpExchange exchange, String path) throws Exception {
+        if (!pcReads.tryAcquire()) throw new WebPanelService.Problem(503, "Já há uma consulta ao PC em andamento. Tente novamente.");
+        try {
+            var parameters = query(exchange.getRequestURI().getRawQuery());
+            if (path.equals("/api/pc/players")) {
+                String search = parameters.getOrDefault("q", "");
+                var directory = onServer(() -> PcInspection.directory(minecraft));
+                json(exchange, 200, Map.of("players", PcInspection.players(directory, search)));
+                return;
+            }
+            UUID id;
+            int index;
+            try {
+                String rawId = parameters.getOrDefault("player", "");
+                id = UUID.fromString(rawId);
+                if (!id.toString().equalsIgnoreCase(rawId)) throw new IllegalArgumentException();
+                index = Integer.parseInt(parameters.getOrDefault("box", "0"));
+                if (index < 0 || index >= 4096) throw new IllegalArgumentException();
+            } catch (IllegalArgumentException invalid) {
+                throw new WebPanelService.Problem(400, "Jogador ou caixa inválida.");
+            }
+            PcInspection.Lookup lookup;
+            try { lookup = onServer(() -> PcInspection.lookup(id, index)); }
+            catch (IllegalStateException unsupported) {
+                throw new WebPanelService.Problem(422, "O armazenamento de Pokémon deste servidor não é compatível com a consulta.");
+            }
+            PcInspection.Box box = lookup.live();
+            if (box == null) {
+                try { box = PcInspection.savedBox(lookup.files(), index); }
+                catch (Exception failure) {
+                    GenerationControl.LOGGER.warn("Não foi possível ler o PC de {}: {}", id, failure.toString());
+                    throw new WebPanelService.Problem(422, "O PC salvo não pôde ser lido. Aguarde o salvamento do jogo e tente novamente.");
+                }
+            }
+            json(exchange, 200, box);
+        } finally {
+            pcReads.release();
+        }
     }
 
     private void login(HttpExchange exchange, boolean secure) throws Exception {
@@ -359,7 +407,7 @@ public final class WebPanelServer {
         lastAction.put(sessionId, now);
     }
 
-    private Object onServer(java.util.concurrent.Callable<Object> task) throws Exception {
+    private <T> T onServer(java.util.concurrent.Callable<T> task) throws Exception {
         return gameRequests.call(minecraft::execute, task);
     }
 

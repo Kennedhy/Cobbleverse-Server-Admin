@@ -6,7 +6,7 @@ Addon Fabric **server-only** para administrar regras do Cobbleverse por um paine
 
 [Read this in English](README.en.md)
 
-> **Versão 0.4.7 — preview.** Use primeiro em uma cópia do servidor e do mundo. Consulte [o estado de validação](docs/TESTING.md).
+> **Versão 0.4.8 — preview.** Use primeiro em uma cópia do servidor e do mundo. Consulte [o estado de validação](docs/TESTING.md).
 
 ## O que administra
 
@@ -15,6 +15,7 @@ Addon Fabric **server-only** para administrar regras do Cobbleverse por um paine
 - Multiplicador de XP global, grupos criados no painel e ajustes por jogador.
 - Limite de nível de Pokémon selvagens, global ou derivado do progresso RCT. Perto de vários jogadores, usa o maior limite aplicável.
 - Multiplicador global de captura que preserva o efeito das Poké Bolas.
+- Consulta das caixas de PC dos jogadores conectados ou com dados salvos no mundo.
 - Validação, diagnóstico, histórico, descarte de rascunho e restauração da revisão anterior.
 
 O painel salva uma revisão pendente. As novas regras entram em vigor quando o servidor reinicia; Pokémon e estruturas que já existem não são removidos.

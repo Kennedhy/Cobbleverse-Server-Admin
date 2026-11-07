@@ -1,8 +1,9 @@
-export async function request(path, { method = 'GET', body } = {}) {
+export async function request(path, { method = 'GET', body, signal } = {}) {
   let response;
   try {
     response = await fetch(path, {
       method,
+      signal,
       credentials: 'same-origin',
       headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),

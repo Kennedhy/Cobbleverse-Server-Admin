@@ -79,6 +79,12 @@ Reinicie o servidor após mudar qualquer opção deste arquivo. Deixe `httpsOrig
 
 Se o painel informar que o jogo está ocupado, aguarde alguns segundos. A consulta do andamento de uma validação tenta novamente automaticamente. Para as demais operações, tente de novo quando o servidor voltar a responder.
 
+## PC dos jogadores
+
+Abra **PC dos jogadores**, busque por nome ou UUID e selecione **Ver PC**. Use as setas para navegar pelas caixas. A consulta mostra a posição, a espécie, a forma, o nível e a indicação de shiny.
+
+O painel identifica quando a caixa vem da memória do jogo ou do último arquivo salvo. Quando o servidor já não conhece o nome de um jogador offline, a lista mostra seu UUID. O acesso é de leitura para administradores autenticados e suporta os arquivos NBT e JSON do Cobblemon.
+
 ## Boas práticas
 
 - Dê acesso ao arquivo de token apenas a quem administra o servidor.

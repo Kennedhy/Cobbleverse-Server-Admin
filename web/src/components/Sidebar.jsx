@@ -1,4 +1,4 @@
-import { Activity, BadgeCheck, CircleDot, Crosshair, Globe2, House, Settings2, Shield, X } from 'lucide-react';
+import { Activity, BadgeCheck, CircleDot, Crosshair, Globe2, House, Monitor, Settings2, Shield, X } from 'lucide-react';
 
 const items = [
   ['overview', 'Visão geral', House],
@@ -7,6 +7,7 @@ const items = [
   ['rules', 'Regras', Settings2],
   ['experience', 'XP e níveis', Activity],
   ['capture', 'Captura', Crosshair],
+  ['pc', 'PC dos jogadores', Monitor],
   ['world', 'Mundo', Globe2],
   ['diagnostics', 'Diagnóstico', Shield],
 ];

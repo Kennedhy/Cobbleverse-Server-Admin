@@ -228,6 +228,17 @@ td > input, td > select { height: 35px; }
 .report-list { margin: 14px 0; padding: 13px 15px; border-left: 2px solid var(--border-strong); background: rgb(255 255 255 / 2%); }
 .report-list h3 { margin: 0 0 5px; font-size: 13px; font-weight: 580; }
 .report-list ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12px; }
+
+.pc-players { max-height: 300px; overflow: auto; }
+.pc-controls { justify-content: space-between; }
+.pc-pagination { display: flex; align-items: center; gap: 8px; }
+.pc-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; padding: 0; margin: 0; list-style: none; }
+.pc-slot { display: flex; flex-direction: column; min-width: 0; min-height: 76px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.pc-slot-filled { background: var(--surface-raised); }
+.pc-slot-number { color: var(--muted); font-size: 11px; }
+.pc-slot strong { color: var(--text); }
+.pc-shiny { color: var(--warning); }
+@media (max-width: 650px) { .pc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .report-error { border-color: var(--danger); }
 .report-error h3 { color: #ffc2c6; }
 .report-warning { border-color: var(--warning); }

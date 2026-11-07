@@ -11,6 +11,7 @@ import ExperiencePage from './pages/ExperiencePage.jsx';
 import GenerationPage from './pages/GenerationPage.jsx';
 import GymPage from './pages/GymPage.jsx';
 import OverviewPage from './pages/OverviewPage.jsx';
+import PlayerPcPage from './pages/PlayerPcPage.jsx';
 import RulesPage from './pages/RulesPage.jsx';
 import WorldPage from './pages/WorldPage.jsx';
 
@@ -21,6 +22,7 @@ const pages = {
   rules: ['Regras', RulesPage],
   experience: ['XP e níveis', ExperiencePage],
   capture: ['Captura', CapturePage],
+  pc: ['PC dos jogadores', PlayerPcPage],
   world: ['Mundo', WorldPage],
   diagnostics: ['Diagnóstico', DiagnosticsPage],
 };
