@@ -14,6 +14,7 @@
 - A validação de equipes/armazenamento só inicia por solicitação e avança em lotes. A leitura de arquivos acontece fora da thread principal.
 - No modo de limite RCT, o evento de spawn considera jogadores próximos. A consulta termina assim que um jogador permite o nível original. Se todos tiverem um limite inferior, a regra usa o maior deles. O modo global evita a consulta.
 - O painel não faz polling contínuo do mundo e não inicia varreduras periódicas de entidades ou chunks.
+- O datapack de regras mantém a busca ampla para espécies e spawns, que podem vir de outros namespaces. Para equipes, circuitos, raids e estruturas de ginásio, lê apenas os namespaces que pode modificar. Funções e estruturas de ginásio só são examinadas quando o filtro está ligado.
 
 ## Dependências e otimização
 
@@ -27,5 +28,7 @@ O modpack de referência já inclui Lithium, FerriteCore, Krypton, ModernFix, C2
 ## Como avaliar o custo
 
 Para isolar o custo do addon, mantenha o mesmo host, pack, cópia do mundo, distâncias de visão e simulação e número de jogadores. Faça uma rodada com o addon ausente e outra com ele ativo. Após o aquecimento, repita períodos equivalentes em repouso e exploração. Faça uma rodada adicional com validação do painel ativa para medir o custo dessa operação. Capture MSPT, TPS, heap e pausas do GC com [spark](https://spark.lucko.me/docs/Command-Usage) ou JFR. Compare p95 e p99 dos ticks e memória do processo. Se o perfil mostrar tempo alto em chunks ou simulação, mude uma distância em `server.properties` por rodada e repita a medição.
+
+Para repetir posições de jogadores em uma cópia de teste, avalie o comando `/player` do [Fabric Carpet](https://github.com/gnembon/fabric-carpet). Use a mesma versão e configuração do Carpet nas duas rodadas. Use clientes do modpack para validar carga de rede, batalhas e captura.
 
 O callback leve e a validação sob demanda limitam trabalho contínuo por desenho, mas isso não substitui a medição em servidor real. Veja também a [matriz de validação](TESTING.md).

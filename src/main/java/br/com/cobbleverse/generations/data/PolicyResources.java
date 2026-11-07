@@ -12,6 +12,7 @@ import java.util.*;
 
 /** A highest-priority, in-memory datapack. Original ZIPs are never edited. */
 public final class PolicyResources extends AbstractFileResourcePack {
+    private static final List<String> SHARED_PREFIXES = List.of("species", "species_additions", "spawn_pool_world");
     private final Map<Identifier, byte[]> files;
     public static volatile int transformedFiles;
     public static volatile int transformedTeams;
@@ -64,10 +65,25 @@ public final class PolicyResources extends AbstractFileResourcePack {
 
     private static List<ResourcePack> generate(ResourceType type, List<ResourcePack> input) {
         List<ResourcePack> originals = input.stream().filter(p -> !p.getId().equals("generation_control:policy")).toList();
+        GenerationRules rules = GenerationControl.rules();
         Map<Identifier, Source> source = new TreeMap<>();
         for (ResourcePack pack : originals) for (String namespace : pack.getNamespaces(type)) {
-            for (String prefix : List.of("species", "species_additions", "spawn_pool_world", "trainers", "series", "worldgen/structure", "function", "raid/boss")) {
-                pack.findResources(type, namespace, prefix, (id, supplier) -> source.put(id, new Source(pack.getId(), supplier)));
+            ResourcePack.ResultConsumer collect = (id, supplier) -> source.put(id, new Source(pack.getId(), supplier));
+            for (String prefix : SHARED_PREFIXES) {
+                pack.findResources(type, namespace, prefix, collect);
+            }
+            if (namespace.equals("rctmod")) {
+                pack.findResources(type, namespace, "trainers", collect);
+                pack.findResources(type, namespace, "series", collect);
+            }
+            if (namespace.equals("cobblemonraiddens")) {
+                pack.findResources(type, namespace, "raid/boss", collect);
+            }
+            if (rules.filterGyms()) {
+                pack.findResources(type, namespace, "function", collect);
+                if (namespace.equals("cobbleverse")) {
+                    pack.findResources(type, namespace, "worldgen/structure", collect);
+                }
             }
         }
         SpeciesCatalog catalog = new SpeciesCatalog();
@@ -91,7 +107,6 @@ public final class PolicyResources extends AbstractFileResourcePack {
             }
         }
         for(var entry:definitions.entrySet()) catalog.add(entry.getKey().substring(0,entry.getKey().indexOf(':')),entry.getValue());
-        GenerationRules rules = GenerationControl.rules();
         Map<Identifier, byte[]> output = new TreeMap<>();
         Map<Identifier,String> rawTrainers=new TreeMap<>();
         Map<String,String> rawSeries=new TreeMap<>();
@@ -106,11 +121,10 @@ public final class PolicyResources extends AbstractFileResourcePack {
             if (path.startsWith("function/") && path.endsWith(".mcfunction")) {
                 String original = text(entry.getValue());
                 String filtered = original.lines().filter(line -> {
-                    if (!rules.filterGyms()) return true;
                     if (!line.stripLeading().startsWith("datapack enable")) return true;
                     String lower = line.toLowerCase(Locale.ROOT);
                     return br.com.cobbleverse.generations.config.GenerationConfig.REGIONS.stream().noneMatch(r -> lower.contains(r) && !rules.regionAllowed(r));
-                }).reduce("", (a,b) -> a+b+"\n");
+                }).collect(StringBuilder::new, (buffer, line) -> buffer.append(line).append('\n'), StringBuilder::append).toString();
                 if (!filtered.equals(original)) output.put(id, filtered.getBytes(StandardCharsets.UTF_8));
                 continue;
             }

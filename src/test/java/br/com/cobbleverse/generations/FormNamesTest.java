@@ -17,4 +17,12 @@ class FormNamesTest {
   assertEquals("galar",FormNames.canonical("GALARIAN")); assertEquals("hisui",FormNames.canonical("Hisuian"));
   assertEquals("paldea",FormNames.canonical("paldean")); assertEquals("mega_x",FormNames.canonical(" Mega - X "));
  }
+
+ @Test void normalizesSeparatorsWithTheSameAsciiRules() {
+  for (String separator : new String[]{"-", " ", "\t", "\n", "\u000B", "\f", "\r", " -\t "}) {
+   assertEquals("mega_x", FormNames.canonical(" Mega" + separator + "X "));
+  }
+  assertEquals("mega\u00A0x", FormNames.canonical("Mega\u00A0X"));
+  assertEquals("normal", FormNames.canonical("Normal"));
+ }
 }

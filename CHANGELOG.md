@@ -2,6 +2,12 @@
 
 Notable changes for each release are recorded here. Versions follow `MAJOR.MINOR.PATCH` and are tagged as `vX.Y.Z`.
 
+## [0.4.6] — Preview
+
+- Limited raid, trainer and gym resource discovery to the namespaces used by the policy overlay.
+- Skip gym function and structure discovery when the gym filter is disabled.
+- Reduce form name allocations during Pokémon policy checks and build filtered function text in one pass.
+
 ## [0.4.5] — Preview
 
 - Added optional private HTTPS access through Tailscale Serve or a reverse proxy on the Minecraft host.

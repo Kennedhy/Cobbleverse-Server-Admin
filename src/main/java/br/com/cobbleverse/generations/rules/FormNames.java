@@ -9,16 +9,14 @@ public final class FormNames {
     private FormNames() {}
     public static String canonical(String form) {
         if (form == null) return "normal";
-        String trimmed = form.trim();
-        boolean simple = true;
-        for (int i = 0; i < trimmed.length(); i++) {
-            char c = trimmed.charAt(i);
-            if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) {
-                simple = false;
-                break;
+        String key = form.trim().toLowerCase(Locale.ROOT);
+        for (int i = 0; i < key.length(); i++) {
+            char c = key.charAt(i);
+            // Same separators as [-\s]+ with the default (ASCII) Java regex flags.
+            if (c == '-' || c == ' ' || (c >= '\t' && c <= '\r')) {
+                return alias(FORM_SEPARATOR.matcher(key).replaceAll("_"));
             }
         }
-        String key = simple ? trimmed : FORM_SEPARATOR.matcher(trimmed.toLowerCase(Locale.ROOT)).replaceAll("_");
         return alias(key);
     }
 
