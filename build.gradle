@@ -53,7 +53,7 @@ dependencies {
     // GeckoLib is referenced only through the Raid Dens API signature. Keep it
     // on javac's classpath without asking Loom 1.13 to remap a Loom 1.17-built jar.
     compileOnly 'maven.modrinth:geckolib:dnJdtm0u'
-    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation platform('org.junit:junit-bom:6.1.3')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
