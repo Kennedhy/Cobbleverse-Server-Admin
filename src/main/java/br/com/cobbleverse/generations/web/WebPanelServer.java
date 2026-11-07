@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -41,6 +42,8 @@ public final class WebPanelServer {
 
     private final MinecraftServer minecraft;
     private final int port;
+    private final String httpsOrigin;
+    private final String httpsAuthority;
     private final String adminToken;
     private final Path tokenFile;
     private final HttpServer http;
@@ -48,16 +51,19 @@ public final class WebPanelServer {
     private final WebPanelService service;
     private final Map<String, Long> sessions = new ConcurrentHashMap<>();
     private final Map<String, Long> lastAction = new ConcurrentHashMap<>();
-    private final Map<String, LoginWindow> loginAttempts = new HashMap<>();
+    // All connections come from loopback, including connections from the proxy.
+    private final LoginWindow loginAttempts = new LoginWindow();
 
     private static final class LoginWindow {
         long started = System.currentTimeMillis();
         int failures;
     }
 
-    private WebPanelServer(MinecraftServer minecraft, int port, String adminToken, Path tokenFile, HttpServer http) {
+    private WebPanelServer(MinecraftServer minecraft, int port, String httpsOrigin, String adminToken, Path tokenFile, HttpServer http) {
         this.minecraft = minecraft;
         this.port = port;
+        this.httpsOrigin = httpsOrigin;
+        this.httpsAuthority = httpsOrigin.isEmpty() ? "" : httpsOrigin.substring("https://".length());
         this.adminToken = adminToken;
         this.tokenFile = tokenFile;
         this.http = http;
@@ -85,12 +91,14 @@ public final class WebPanelServer {
             }
             int port = Integer.parseInt(properties.getProperty("port", "8765").trim());
             if (port < 1024 || port > 65535) throw new IOException("A porta do painel deve ficar entre 1024 e 65535.");
+            String httpsOrigin = readHttpsOrigin(properties);
             String secret = loadOrCreateToken(token);
             HttpServer http = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 8);
-            WebPanelServer panel = new WebPanelServer(server, port, secret, token, http);
+            WebPanelServer panel = new WebPanelServer(server, port, httpsOrigin, secret, token, http);
             http.start();
             current = panel;
             GenerationControl.LOGGER.info("Painel web local: http://127.0.0.1:{} — token salvo em {}", port, token);
+            if (!httpsOrigin.isEmpty()) GenerationControl.LOGGER.info("Endereço HTTPS configurado para o painel: {}", httpsOrigin);
         } catch (Exception failure) {
             GenerationControl.LOGGER.error("O servidor do jogo iniciou, mas o painel web não pôde abrir. Consulte {}.", settings, failure);
         }
@@ -102,7 +110,6 @@ public final class WebPanelServer {
         if (panel == null) return;
         panel.sessions.clear();
         panel.lastAction.clear();
-        panel.loginAttempts.clear();
         panel.http.stop(0);
         panel.executor.shutdownNow();
     }
@@ -110,7 +117,8 @@ public final class WebPanelServer {
     public static String connectionInfo() {
         WebPanelServer panel = current;
         if (panel == null) return "O painel web não está ativo. Confira o log do servidor e o arquivo web.properties.";
-        return "Painel web: http://127.0.0.1:" + panel.port + " | token em: " + panel.tokenFile;
+        String remote = panel.httpsOrigin.isEmpty() ? "" : " | HTTPS: " + panel.httpsOrigin;
+        return "Painel web: http://127.0.0.1:" + panel.port + remote + " | token em: " + panel.tokenFile;
     }
 
     private static Properties loadSettings(Path file) throws IOException {
@@ -121,11 +129,30 @@ public final class WebPanelServer {
             Files.createDirectories(file.getParent());
             properties.setProperty("enabled", "true");
             properties.setProperty("port", "8765");
+            properties.setProperty("httpsOrigin", "");
             try (var output = Files.newOutputStream(file, StandardOpenOption.CREATE_NEW)) {
                 properties.store(output, "Painel administrativo Cobbleverse. O acesso fica limitado a 127.0.0.1.");
             }
         }
         return properties;
+    }
+
+    private static String readHttpsOrigin(Properties properties) throws IOException {
+        String value = properties.getProperty("httpsOrigin", "").trim().toLowerCase(Locale.ROOT);
+        if (value.isEmpty()) return "";
+        String error = "httpsOrigin deve ser um endereço HTTPS, com hostname e porta opcional, sem caminho, usuário, query ou fragmento.";
+        URI uri;
+        try { uri = URI.create(value); }
+        catch (IllegalArgumentException invalid) { throw new IOException(error); }
+        String host = uri.getHost();
+        int port = uri.getPort();
+        if (host == null || host.equals("localhost") || host.equals("127.0.0.1") || port == 0 || port > 65535) {
+            throw new IOException(error);
+        }
+        String origin = "https://" + host;
+        String configured = port == -1 ? origin : origin + ":" + port;
+        if (!value.equals(configured) && !value.equals(configured + "/")) throw new IOException(error);
+        return port == 443 ? origin : configured;
     }
 
     private static String loadOrCreateToken(Path file) throws IOException {
@@ -180,13 +207,17 @@ public final class WebPanelServer {
     private void handle(HttpExchange exchange) throws IOException {
         try {
             securityHeaders(exchange);
-            if (!allowedHost(exchange)) { json(exchange, 403, Map.of("message", "Endereço de painel inválido.")); return; }
+            String expectedOrigin = expectedOrigin(exchange);
+            if (expectedOrigin == null) { json(exchange, 403, Map.of("message", "Endereço de painel inválido.")); return; }
             String path = exchange.getRequestURI().getPath();
             if (path.startsWith("/api/")) {
-                if (!allowedOrigin(exchange, exchange.getRequestMethod().equals("POST"))) {
+                String method = exchange.getRequestMethod();
+                String origin = exchange.getRequestHeaders().getFirst("Origin");
+                boolean mutation = method.equals("POST") || method.equals("DELETE");
+                if (origin == null ? mutation : !expectedOrigin.equals(origin)) {
                     json(exchange, 403, Map.of("message", "Origem recusada.")); return;
                 }
-                routeApi(exchange, path);
+                routeApi(exchange, path, expectedOrigin.equals(httpsOrigin));
             } else serveAsset(exchange, path);
         } catch (WebPanelService.Problem problem) {
             json(exchange, problem.status, Map.of("message", safeMessage(problem.getMessage())));
@@ -205,10 +236,10 @@ public final class WebPanelServer {
         }
     }
 
-    private void routeApi(HttpExchange exchange, String path) throws Exception {
+    private void routeApi(HttpExchange exchange, String path, boolean secure) throws Exception {
         String method = exchange.getRequestMethod();
-        if (path.equals("/api/session") && method.equals("POST")) { login(exchange); return; }
-        if (path.equals("/api/session") && method.equals("DELETE")) { logout(exchange); return; }
+        if (path.equals("/api/session") && method.equals("POST")) { login(exchange, secure); return; }
+        if (path.equals("/api/session") && method.equals("DELETE")) { logout(exchange, secure); return; }
         String sessionId = authenticatedSession(exchange);
         if (sessionId == null) { json(exchange, 401, Map.of("message", "Entre com o token do painel.")); return; }
         if (path.equals("/api/state") && method.equals("GET")) {
@@ -241,25 +272,16 @@ public final class WebPanelServer {
         json(exchange, 404, Map.of("message", "Rota não encontrada."));
     }
 
-    private void login(HttpExchange exchange) throws Exception {
-        String address = exchange.getRemoteAddress().getAddress().getHostAddress();
-        synchronized (loginAttempts) {
-            LoginWindow window = loginAttempts.computeIfAbsent(address, ignored -> new LoginWindow());
-            if (System.currentTimeMillis() - window.started > 60_000) {
-                window.started = System.currentTimeMillis(); window.failures = 0;
-            }
-            if (window.failures >= 5) { json(exchange, 429, Map.of("message", "Muitas tentativas. Aguarde um minuto.")); return; }
-        }
+    private void login(HttpExchange exchange, boolean secure) throws Exception {
         JsonObject payload = ConfigStore.GSON.fromJson(body(exchange), JsonObject.class);
         String received = payload != null && payload.has("token") && payload.get("token").isJsonPrimitive()
                 ? payload.get("token").getAsString() : "";
-        boolean matches = MessageDigest.isEqual(adminToken.getBytes(StandardCharsets.UTF_8), received.getBytes(StandardCharsets.UTF_8));
-        if (!matches) {
-            synchronized (loginAttempts) { loginAttempts.get(address).failures++; }
+        int status = verifyToken(received);
+        if (status == 429) { json(exchange, 429, Map.of("message", "Muitas tentativas. Aguarde um minuto.")); return; }
+        if (status == 401) {
             json(exchange, 401, Map.of("message", "Token inválido."));
             return;
         }
-        synchronized (loginAttempts) { loginAttempts.remove(address); }
         if (sessions.size() >= 64) {
             long now = System.currentTimeMillis();
             for (var entry : sessions.entrySet()) {
@@ -274,19 +296,42 @@ public final class WebPanelServer {
         byte[] raw = new byte[32]; SECURE_RANDOM.nextBytes(raw);
         String id = HexFormat.of().formatHex(raw);
         sessions.put(id, System.currentTimeMillis() + SESSION_LIFETIME_MS);
-        exchange.getResponseHeaders().add("Set-Cookie", "GC_SESSION=" + id + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200");
+        setSessionCookie(exchange, id, 43200, secure);
         json(exchange, 200, Map.of("authenticated", true));
     }
 
-    private void logout(HttpExchange exchange) throws IOException {
+    private int verifyToken(String received) {
+        synchronized (loginAttempts) {
+            long now = System.currentTimeMillis();
+            if (now - loginAttempts.started > 60_000) {
+                loginAttempts.started = now;
+                loginAttempts.failures = 0;
+            }
+            if (loginAttempts.failures >= 5) return 429;
+            if (!MessageDigest.isEqual(adminToken.getBytes(StandardCharsets.UTF_8), received.getBytes(StandardCharsets.UTF_8))) {
+                loginAttempts.failures++;
+                return 401;
+            }
+            loginAttempts.started = now;
+            loginAttempts.failures = 0;
+            return 200;
+        }
+    }
+
+    private void logout(HttpExchange exchange, boolean secure) throws IOException {
         String id = cookie(exchange, "GC_SESSION");
         if (id != null) {
             sessions.remove(id);
             lastAction.remove(id);
             service.closeSession(id);
         }
-        exchange.getResponseHeaders().add("Set-Cookie", "GC_SESSION=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
+        setSessionCookie(exchange, "", 0, secure);
         json(exchange, 200, Map.of("authenticated", false));
+    }
+
+    private void setSessionCookie(HttpExchange exchange, String id, int maxAge, boolean secure) {
+        exchange.getResponseHeaders().add("Set-Cookie", "GC_SESSION=" + id
+                + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=" + maxAge + (secure ? "; Secure" : ""));
     }
 
     private String authenticatedSession(HttpExchange exchange) {
@@ -355,33 +400,28 @@ public final class WebPanelServer {
         headers.set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
     }
 
-    private boolean allowedHost(HttpExchange exchange) {
+    private String expectedOrigin(HttpExchange exchange) {
         String authority = exchange.getRequestHeaders().getFirst("Host");
-        if (authority == null || authority.isBlank() || !authority.equals(authority.trim())) return false;
+        if (authority == null || authority.isBlank() || !authority.equals(authority.trim())) return null;
+        if (authority.equalsIgnoreCase(httpsAuthority)) return httpsOrigin;
 
+        authority = authority.toLowerCase(Locale.ROOT);
         String host = authority;
         int colon = authority.lastIndexOf(':');
         if (colon >= 0) {
-            if (authority.indexOf(':') != colon) return false;
+            if (authority.indexOf(':') != colon) return null;
             String forwardedPort = authority.substring(colon + 1);
             try {
                 int value = Integer.parseInt(forwardedPort);
-                if (value < 1 || value > 65535) return false;
+                if (value < 1 || value > 65535 || !forwardedPort.equals(Integer.toString(value))) return null;
             } catch (NumberFormatException invalidPort) {
-                return false;
+                return null;
             }
             host = authority.substring(0, colon);
         }
 
         // SSH local forwarding may expose this loopback service on a different browser-side port.
-        return host.equalsIgnoreCase("127.0.0.1") || host.equalsIgnoreCase("localhost");
-    }
-
-    private boolean allowedOrigin(HttpExchange exchange, boolean mutation) {
-        String origin = exchange.getRequestHeaders().getFirst("Origin");
-        String host = exchange.getRequestHeaders().getFirst("Host");
-        if (origin == null) return !mutation;
-        return host != null && (origin.equals("http://" + host));
+        return host.equals("127.0.0.1") || host.equals("localhost") ? "http://" + authority : null;
     }
 
     private String cookie(HttpExchange exchange, String name) {

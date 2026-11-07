@@ -41,6 +41,7 @@ function Login({ onLogin, error, busy }) {
       <details className="login-access-help">
         <summary>Como acessar de outro computador</summary>
         <div>
+          <p>Se o servidor já tem um endereço HTTPS privado, entre na rede de administração e abra esse endereço. Você pode consultar a URL e o caminho do token com <code>/geracoes web</code> no console.</p>
           <ol className="login-access-steps">
             <li><strong>Encontre o caminho do token</strong><span>No console do servidor, execute <code>/geracoes web</code>. O comando mostra o caminho do arquivo, sem revelar o token.</span></li>
             <li><strong>Abra o túnel no computador administrador</strong><span>Use o helper PowerShell distribuído com o JAR. Ele escolhe uma porta local livre, abre o navegador e pode copiar o token por SSH sem imprimi-lo:</span>
@@ -57,7 +58,7 @@ function Login({ onLogin, error, busy }) {
           </details>
         </div>
       </details>
-      <p className="login-foot">Acesse por túnel SSH em uma rede confiável. O token é uma credencial administrativa; não o envie em links, chats ou históricos compartilhados.</p>
+      <p className="login-foot">Use o endereço HTTPS privado ou um túnel SSH. Trate o token como uma senha administrativa.</p>
     </form>
   </main>;
 }

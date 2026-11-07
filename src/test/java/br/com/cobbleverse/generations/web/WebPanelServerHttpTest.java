@@ -30,9 +30,9 @@ class WebPanelServerHttpTest {
         http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 8);
         port = http.getAddress().getPort();
         Constructor<WebPanelServer> constructor = WebPanelServer.class.getDeclaredConstructor(
-                MinecraftServer.class, int.class, String.class, Path.class, HttpServer.class);
+                MinecraftServer.class, int.class, String.class, String.class, Path.class, HttpServer.class);
         constructor.setAccessible(true);
-        WebPanelServer panel = constructor.newInstance(null, port, TOKEN, Path.of("unused-token"), http);
+        WebPanelServer panel = constructor.newInstance(null, port, "", TOKEN, Path.of("unused-token"), http);
         Field current = WebPanelServer.class.getDeclaredField("current");
         current.setAccessible(true);
         current.set(null, panel);

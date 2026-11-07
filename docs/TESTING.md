@@ -2,6 +2,13 @@
 
 O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este documento separa o que foi observado do que ainda precisa de servidor e jogadores reais.
 
+## Versão 0.4.5
+
+- Build local do JAR e 36 testes automatizados concluídos. O artefato contém apenas entrypoint de servidor e inclui os arquivos estáticos do painel.
+- O pack de teste com 252 mods chegou a `Done` no servidor local isolado. Minecraft e painel escutaram em `127.0.0.1`.
+- Em um proxy HTTPS local de teste, com certificado verificado, passaram login, leitura de estado autenticada, logout e a checagem dos atributos do cookie. Um hostname não configurado e alterações com origem errada ou ausente foram recusados. Login e logout por HTTP em loopback também passaram.
+- O acesso pelo Tailscale Serve no host de destino, a conexão de um cliente do pack sem o JAR nesta versão e o perfil com carga representativa ainda precisam de validação. A conexão de um cliente sem o JAR foi observada na 0.4.3.
+
 ## Versão 0.4.4
 
 - Build `remapJar` a partir do repositório, sem uma instalação local do modpack: concluído.
@@ -22,12 +29,12 @@ Esse teste não validou host dedicado via SSH, carga real, migração de progres
 
 | Área | Estado | Observação |
 | --- | --- | --- |
-| Compilação e empacotamento | 0.4.4 concluído | Build sem `packDir` local |
-| Metadados server-only | 0.4.4 verificados | Zero classes cliente; web incluída |
-| Painel HTTP, token e sessão | 0.4.3 observado localmente | Repetir no runtime 0.4.4 |
-| Cliente do pack sem o addon | 0.4.3 conectado localmente | Repetir na build 0.4.4 |
+| Compilação e empacotamento | 0.4.5 concluído | Build sem `packDir` local |
+| Metadados server-only | 0.4.5 verificados | Apenas entrypoint de servidor |
+| Painel HTTP, token e sessão | 0.4.5 observado localmente | Loopback e proxy de teste com TLS |
+| Cliente do pack sem o addon | 0.4.3 conectado localmente | Repetir na build 0.4.5 |
 | Spawn, XP, captura, RCT e addons | Parcial | Cobertura varia por evento e versão |
-| Túnel SSH com host dedicado | Pendente | Requer host acessível pela rede privada |
+| Tailscale Serve ou túnel SSH no host de destino | Pendente | Requer host acessível pela rede privada |
 | TPS, heap e memória sob carga | Pendente | Sem benchmark A/B representativo |
 
 ## Limitações conhecidas

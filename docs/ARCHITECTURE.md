@@ -12,7 +12,7 @@
 - Filtragem de geração, regras de XP, limite de nível, captura e integrações de estruturas usam os eventos e hooks específicos do Cobblemon/RCT e dos addons compatíveis.
 - O callback de fim de tick retorna imediatamente quando não há validação administrativa em andamento.
 - A validação de equipes/armazenamento só inicia por solicitação e avança em lotes. A leitura de arquivos acontece fora da thread principal.
-- No modo de limite RCT, o evento de spawn considera jogadores próximos e escolhe o maior limite aplicável. O modo global evita essa consulta.
+- No modo de limite RCT, o evento de spawn considera jogadores próximos. A consulta termina assim que um jogador permite o nível original. Se todos tiverem um limite inferior, a regra usa o maior deles. O modo global evita a consulta.
 - O painel não faz polling contínuo do mundo e não inicia varreduras periódicas de entidades ou chunks.
 
 ## Dependências e otimização
@@ -21,8 +21,11 @@ O build obtém versões exatas de Cobblemon, RCT e integrações via IDs imutáv
 
 O modpack de referência já inclui Lithium, FerriteCore, Krypton, ModernFix, C2ME e ScalableLux. Este addon não instala duplicatas nem modifica suas configurações. Alterar versões ou opções de C2ME sem perfil comparável pode afetar worldgen customizado.
 
+- [Lithium](https://github.com/CaffeineMC/lithium) otimiza a lógica do jogo. [FerriteCore](https://github.com/malte0811/FerriteCore) reduz o uso de memória. Preserve as versões do pack como referência para a medição.
+- Se a exploração de terreno novo concentrar os picos, teste o [Chunky para Fabric 1.21.1](https://modrinth.com/plugin/chunky?g=1.21.1&l=fabric) em uma cópia do mundo. Ele permite gerar uma região limitada durante manutenção, depois de fixar as regras de gerações e ginásios. Compare o tempo de tick ao explorar a região pré-gerada e outra equivalente sem pré-geração. A [documentação dos comandos](https://github.com/pop4959/Chunky/wiki/Commands) cobre seleção, progresso e pausa.
+
 ## Como avaliar o custo
 
-Não existe um benchmark A/B suficiente para atribuir melhoria ou regressão de TPS, heap ou memória total a este addon. Para uma comparação, mantenha o mesmo host, pack, mundo, view/simulation distance e população. Capture períodos equivalentes em repouso, exploração e validação com Spark ou JFR; compare p95/p99 dos ticks, pausas de GC, heap e memória do processo.
+Para isolar o custo do addon, mantenha o mesmo host, pack, cópia do mundo, distâncias de visão e simulação e número de jogadores. Faça uma rodada com o addon ausente e outra com ele ativo. Após o aquecimento, repita períodos equivalentes em repouso e exploração. Faça uma rodada adicional com validação do painel ativa para medir o custo dessa operação. Capture MSPT, TPS, heap e pausas do GC com [spark](https://spark.lucko.me/docs/Command-Usage) ou JFR. Compare p95 e p99 dos ticks e memória do processo. Se o perfil mostrar tempo alto em chunks ou simulação, mude uma distância em `server.properties` por rodada e repita a medição.
 
 O callback leve e a validação sob demanda limitam trabalho contínuo por desenho, mas isso não substitui a medição em servidor real. Veja também a [matriz de validação](TESTING.md).

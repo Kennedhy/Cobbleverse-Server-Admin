@@ -8,7 +8,7 @@ export async function request(path, { method = 'GET', body } = {}) {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new Error('Não foi possível alcançar o painel local do servidor.');
+    throw new Error('Não foi possível alcançar o painel do servidor.');
   }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {

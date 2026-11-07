@@ -57,18 +57,21 @@ public final class ExperienceManager {
             var pokemon = entity.getPokemon();
             if (!br.com.cobbleverse.generations.rules.ExperienceRules.controlsWildLevels(c) || !pokemon.isWild()
                     || pokemon.getOwnerUUID() != null || !(entity.getWorld() instanceof ServerWorld world)) return;
+            int level = pokemon.getLevel();
+            if (level <= 1) return;
             int limit = c.levelCapMode.equals("global") ? c.globalLevelCap : 0;
             if (c.levelCapMode.equals("rct")) {
                 // World players only, on a spawn event; no entity/chunk scans. Highest eligible cap wins.
                 for (ServerPlayerEntity player : world.getPlayers()) {
                     if (player.isSpectator() || player.squaredDistanceTo(entity) > 128.0 * 128.0) continue;
                     limit = Math.max(limit, cap(c, player));
-                    // RCT caps are bounded to 100, so the maximum is known without scanning remaining players.
+                    // The maximum only matters if every nearby cap is below the encounter's level.
+                    if (limit >= level) return;
                     if (limit == 100) break;
                 }
             }
             // No nearby player or RCT still loading: preserve the original encounter.
-            if (limit <= 0 || pokemon.getLevel() <= limit) return;
+            if (limit <= 0 || level <= limit) return;
             if (c.wildLevelBehavior.equals("block")) event.cancel();
             else pokemon.setLevel(limit);
         });

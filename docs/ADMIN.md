@@ -11,7 +11,29 @@ O token é uma credencial administrativa. O addon tenta aplicar ACL restrita ao 
 
 ## Acesso remoto seguro
 
-O painel escuta somente em `127.0.0.1`. Faça o acesso remoto por uma rede privada e um túnel SSH; não abra a porta do painel no roteador nem no firewall público.
+O painel escuta em `127.0.0.1`. Você pode entrar por um endereço HTTPS privado ou usar um túnel SSH. Mantenha a porta do painel fechada no roteador e no firewall público.
+
+### Endereço HTTPS privado com Tailscale Serve
+
+1. Conecte o servidor e os dispositivos administradores à mesma rede Tailscale. Restrinja nas políticas da rede o acesso ao servidor na porta HTTPS aos administradores.
+2. Na máquina do Minecraft, com o painel em execução, configure o Serve na raiz do endereço:
+
+   ```sh
+   tailscale serve --bg http://127.0.0.1:8765
+   tailscale serve status
+   ```
+
+3. Copie o endereço HTTPS mostrado pelo Serve para `<mundo>/generation-control/web.properties`. Por exemplo:
+
+   ```properties
+   httpsOrigin=https://cobbleverse.exemplo.ts.net
+   ```
+
+4. Reinicie o Minecraft. No dispositivo administrador, conectado à rede Tailscale, abra esse endereço no navegador e informe o token. Leia o arquivo do token por SSH/SFTP ou diretamente na máquina do servidor.
+
+O Serve fornece HTTPS dentro da sua rede Tailscale. Mantenha o compartilhamento público pelo Funnel desativado. [Documentação do Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve).
+
+Você também pode usar um proxy HTTPS já instalado no mesmo host. Configure um hostname exclusivo para o painel, encaminhe a raiz para `http://127.0.0.1:8765`, preserve o cabeçalho `Host` do navegador e restrinja a entrada à rede administrativa. O addon valida o endereço configurado e a origem de cada alteração, sem confiar em cabeçalhos `X-Forwarded-*`. O cookie remoto recebe `Secure`. [Documentação do proxy reverso do Caddy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy).
 
 ### Helper do Windows
 
@@ -50,9 +72,10 @@ O arquivo `<mundo>/generation-control/web.properties` controla o painel:
 ```properties
 enabled=true
 port=8765
+httpsOrigin=
 ```
 
-Depois de mudar a porta ou desativar o painel, reinicie o servidor. Uma alteração feita no navegador é salva como revisão pendente; use **Validar** e **Salvar**, depois reinicie para aplicar as regras. A revisão anterior continua disponível para restauração pelo painel.
+Reinicie o servidor após mudar qualquer opção deste arquivo. Deixe `httpsOrigin` vazio para usar somente o acesso local ou por SSH. Uma alteração de regra feita no navegador é salva como revisão pendente. Use **Validar** e **Salvar**, depois reinicie para aplicá-la. A revisão anterior continua disponível para restauração pelo painel.
 
 ## Boas práticas
 

@@ -2,6 +2,12 @@
 
 Notable changes for each release are recorded here. Versions follow `MAJOR.MINOR.PATCH` and are tagged as `vX.Y.Z`.
 
+## [0.4.5] — Preview
+
+- Added optional private HTTPS access through Tailscale Serve or a reverse proxy on the Minecraft host.
+- Added Secure session cookies for the configured HTTPS origin and origin checks for logout.
+- Reduced RCT cap lookups during wild Pokémon spawns when the encounter already fits a nearby player's cap.
+
 ## [0.4.4] - 2026-11-07 — Preview
 
 - Clarified the remote panel login flow and SSH tunnel setup.

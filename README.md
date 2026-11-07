@@ -6,7 +6,7 @@ Addon Fabric **server-only** para administrar regras do Cobbleverse por um paine
 
 [Read this in English](README.en.md)
 
-> **Versão 0.4.4 — preview.** Use primeiro em uma cópia do servidor e do mundo. O suporte ao modpack e os fluxos principais estão em desenvolvimento; veja [o estado de validação](docs/TESTING.md) antes de instalar em produção.
+> **Versão 0.4.5 — preview.** Use primeiro em uma cópia do servidor e do mundo. Consulte [o estado de validação](docs/TESTING.md).
 
 ## O que administra
 
@@ -36,10 +36,10 @@ As integrações de raids, megaevoluções e spawns de outros mods dependem das 
 ## Instalação no servidor
 
 1. Faça backup e valide o addon em uma cópia do servidor e do mundo.
-2. Baixe `cobbleverse-generation-control-0.4.4.jar` na página de [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases).
+2. Baixe o JAR na página de [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases).
 3. Coloque o JAR somente na pasta `mods/` do servidor Fabric. Não o instale nos clientes.
 4. Inicie o servidor e, como administrador, execute `/geracoes web` para ver o endereço e o caminho do token.
-5. No computador do servidor, abra `http://127.0.0.1:8765` e cole o token. Para acesso remoto, use o túnel SSH descrito em [Administração do painel](docs/ADMIN.md).
+5. No computador do servidor, abra `http://127.0.0.1:8765` e cole o token. Para acesso remoto, configure HTTPS privado ou um túnel SSH. Veja [Administração do painel](docs/ADMIN.md).
 
 O painel fica preso a `127.0.0.1`. **Não exponha a porta 8765 à internet nem aos jogadores.** A configuração de porta fica em `<mundo>/generation-control/web.properties`; alterá-la exige reiniciar o processo.
 
@@ -61,7 +61,7 @@ cd web && npm ci && cd ..
 ./gradlew --no-daemon --max-workers=1 remapJar
 ```
 
-O JAR remapeado fica em `build/libs/cobbleverse-generation-control-0.4.4.jar`. React, Vite e Node são usados só para gerar os arquivos estáticos; não são carregados no servidor Minecraft. Veja [desenvolvimento](DEVELOPMENT.md) para build, testes e processo de release.
+O JAR remapeado fica em `build/libs/`. React, Vite e Node geram os arquivos estáticos durante o build. Veja [desenvolvimento](DEVELOPMENT.md) para build, testes e processo de release.
 
 ## Segurança e desempenho
 

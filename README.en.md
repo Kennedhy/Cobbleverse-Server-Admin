@@ -4,7 +4,7 @@ Fabric **server-only** addon for managing Cobbleverse rules through a private we
 
 [Leia em português](README.md)
 
-> **Version 0.4.4 — preview.** First use it on a copy of the server and world. Modpack support and key workflows are still being validated; read the [validation status](docs/TESTING.md) before using it in production.
+> **Version 0.4.5 — preview.** First use it on a copy of the server and world. See the [validation status](docs/TESTING.md).
 
 ## Features
 
@@ -34,10 +34,10 @@ Raid, mega-evolution, and other spawn integrations depend on the versions in the
 ## Server installation
 
 1. Back up the server and world, then validate the addon on a copy.
-2. Download `cobbleverse-generation-control-0.4.4.jar` from [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases).
+2. Download the JAR from [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases).
 3. Put the JAR in the Fabric server's `mods/` folder only. Do not install it on clients.
 4. Start the server and run `/geracoes web` as an administrator to get the panel address and token path.
-5. On the server machine, open `http://127.0.0.1:8765` and enter the token. For remote access, use the SSH tunnel in [Panel administration](docs/ADMIN.md).
+5. On the server machine, open `http://127.0.0.1:8765` and enter the token. For remote access, configure private HTTPS or an SSH tunnel. See [Panel administration](docs/ADMIN.md).
 
 The panel binds to `127.0.0.1`. **Do not expose port 8765 to the internet or players.** Port settings are in `<world>/generation-control/web.properties`; changes require a server restart.
 
@@ -50,7 +50,7 @@ cd web && npm ci && cd ..
 ./gradlew --no-daemon --max-workers=1 remapJar
 ```
 
-The remapped JAR is written to `build/libs/cobbleverse-generation-control-0.4.4.jar`. React, Vite, and Node only generate static web assets; they are not loaded by the Minecraft server. See [development](DEVELOPMENT.md) for builds, tests, and releases.
+The remapped JAR is written to `build/libs/`. React, Vite, and Node generate the static web assets at build time. See [development](DEVELOPMENT.md) for builds, tests, and releases.
 
 ## Security and performance
 
