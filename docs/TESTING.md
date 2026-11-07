@@ -2,10 +2,15 @@
 
 O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este documento separa o que foi observado do que ainda precisa de servidor e jogadores reais.
 
+## Teste do pack no GitHub
+
+O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Modrinth, verifica os arquivos e inicia um servidor e um cliente Fabric em uma máquina temporária do GitHub. O JAR informado no formulário é instalado apenas no servidor. O teste usa um mundo descartável e credenciais locais. A partir da 0.4.8, o teste também consulta o PC em memória e o arquivo salvo após reiniciar.
+
 ## Versão 0.4.7
 
 - A suíte inclui um executor de teste que representa a thread do jogo ocupada. O teste verifica que a fila aceita no máximo duas solicitações, descarta operações vencidas sem executá-las depois e volta a aceitar pedidos quando o executor avança.
-- O teste de fila é isolado. A conexão com o cliente do pack, o acesso privado no host de destino e o perfil com jogadores continuam pendentes para a versão publicada.
+- Um cliente do Cobbleverse 1.7.42 entrou no servidor dedicado Linux sem o JAR do gerenciador. Login administrativo e leitura de estado também passaram. [Execução do teste](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42424454333).
+- O acesso privado e a medição de carga representativa continuam pendentes no host de destino.
 
 ## Versão 0.4.6
 

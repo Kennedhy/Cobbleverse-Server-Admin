@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -111,7 +112,7 @@ def panel_smoke(server):
                 if json.load(response)["world"] != "smoke-world":
                     raise RuntimeError("Panel reported a different world")
             print("Authenticated panel state passed.")
-            return
+            return opener
         except urllib.error.HTTPError as failure:
             # RCT can register its trainers after the web listener opens.
             if failure.code != 503 or time.monotonic() >= deadline:
@@ -150,12 +151,72 @@ def finish(process, stop=False):
             process.wait()
 
 
+def start_server(server, output):
+    return subprocess.Popen(
+        ["java", "-Xmx3G", "-XX:ActiveProcessorCount=2", "-jar", "fabric-server.jar", "nogui"],
+        cwd=server, stdin=subprocess.PIPE, stdout=output, stderr=subprocess.STDOUT,
+    )
+
+
+def api(opener, path, **params):
+    with opener.open(PANEL_ADDRESS + "/api/pc/" + path + "?" + urllib.parse.urlencode(params), timeout=10) as response:
+        return json.load(response)
+
+
+def has_fixture_pokemon(box):
+    return any(slot["species"] == "cobblemon:pikachu" and slot["level"] == 13 and slot["shiny"]
+               for slot in box["slots"])
+
+
+def live_pc_smoke(opener, dedicated):
+    try:
+        with urllib.request.urlopen(PANEL_ADDRESS + "/api/pc/players", timeout=8):
+            raise RuntimeError("PC endpoint allowed an unauthenticated request")
+    except urllib.error.HTTPError as failure:
+        if failure.code != 401:
+            raise
+        failure.close()
+    matches = api(opener, "players", q=PLAYER)["players"]
+    (profile,) = [entry for entry in matches if entry["name"] == PLAYER and entry["online"]]
+    for properties in ["bulbasaur"] * 6 + ["pikachu level=13 shiny=true"]:
+        dedicated.stdin.write(f"givepokemonother {PLAYER} {properties}\n".encode())
+    dedicated.stdin.flush()
+    deadline = time.monotonic() + 25
+    while time.monotonic() < deadline:
+        box = api(opener, "box", player=profile["uuid"], box=0)
+        if box["source"] == "live" and has_fixture_pokemon(box):
+            print("Authenticated PC lookup found the shiny level-13 Pikachu in a live box.")
+            return profile["uuid"]
+        time.sleep(1)
+    raise RuntimeError("The fixture Pokémon did not appear in the live box")
+
+
+def saved_pc_smoke(root, server, player_id):
+    server_log = root / "server-offline-pc.log"
+    with server_log.open("wb") as output:
+        dedicated = start_server(server, output)
+        try:
+            wait_for(dedicated, server_log, "Painel web local:", 300)
+            opener = panel_smoke(server)
+            matches = api(opener, "players", q=player_id)["players"]
+            if not any(entry["uuid"] == player_id and not entry["online"] for entry in matches):
+                raise RuntimeError("The saved player was not discoverable offline")
+            box = api(opener, "box", player=player_id, box=0)
+            if box["source"] != "saved" or not has_fixture_pokemon(box):
+                raise RuntimeError("The saved PC did not contain the fixture Pokémon")
+            print("Read-only offline lookup found the same Pokémon after restart.")
+        finally:
+            finish(dedicated, stop=True)
+
+
 def run(root):
     server, client = root / "server", root / "client"
     server.mkdir()
     client.mkdir()
     install_pack(root, server, client)
     (manager,) = (root / "release").glob("*.jar")
+    with zipfile.ZipFile(manager) as mod:
+        version = tuple(map(int, json.loads(mod.read("fabric.mod.json"))["version"].split(".")))
     shutil.copy2(manager, server / "mods" / manager.name)
     for jar in (client / "mods").glob("*.jar"):
         with zipfile.ZipFile(jar) as mod:
@@ -193,23 +254,27 @@ def run(root):
         "customResolution": True, "resolutionWidth": "960", "resolutionHeight": "540",
     })
     server_log = root / "server.log"
+    checked_pc = None
     with server_log.open("wb") as output:
-        dedicated = subprocess.Popen(
-            ["java", "-Xmx3G", "-XX:ActiveProcessorCount=2", "-jar", "fabric-server.jar", "nogui"],
-            cwd=server, stdin=subprocess.PIPE, stdout=output, stderr=subprocess.STDOUT,
-        )
+        dedicated = start_server(server, output)
         try:
             wait_for(dedicated, server_log, "Painel web local:", 300)
-            panel_smoke(server)
+            opener = panel_smoke(server)
             with (root / "client.log").open("wb") as output:
                 player = subprocess.Popen(args, cwd=client, stdout=output, stderr=subprocess.STDOUT)
                 try:
                     wait_for(player, server_log, PLAYER + " joined the game", 330)
                     print("Fabric client without the manager joined the dedicated server.")
+                    if version >= (0, 4, 8):
+                        checked_pc = live_pc_smoke(opener, dedicated)
                 finally:
                     finish(player)
+            if checked_pc:
+                wait_for(dedicated, server_log, PLAYER + " left the game", 30)
         finally:
             finish(dedicated, stop=True)
+    if checked_pc:
+        saved_pc_smoke(root, server, checked_pc)
 
 
 if __name__ == "__main__":

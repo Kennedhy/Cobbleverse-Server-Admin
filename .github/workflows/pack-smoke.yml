@@ -5,7 +5,7 @@ on:
     inputs:
       manager_tag:
         description: Published preview tag
-        default: v0.4.7
+        default: v0.4.8
         required: true
         type: string
       accept_minecraft_eula:
