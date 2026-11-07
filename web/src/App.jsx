@@ -168,9 +168,17 @@ export default function App() {
   };
 
   const waitForJob = async (jobId) => {
+    let busyAttempts = 0;
     while (true) {
-      await new Promise((resolve) => setTimeout(resolve, 1800));
-      const next = await request('/api/job');
+      await new Promise((resolve) => setTimeout(resolve, 1800 * (busyAttempts + 1)));
+      let next;
+      try {
+        next = await request('/api/job');
+      } catch (failure) {
+        if (failure.status !== 503 || ++busyAttempts >= 3) throw failure;
+        continue;
+      }
+      busyAttempts = 0;
       if (next.editRevision !== baseRevision) throw new Error('A revisão do servidor mudou durante a análise. Atualize o painel.');
       if (!next.job || next.job.id !== jobId) throw new Error('A validação não está mais disponível. Atualize o painel.');
       setState((current) => current ? { ...current, job: next.job } : current);

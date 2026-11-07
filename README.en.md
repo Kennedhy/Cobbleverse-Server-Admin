@@ -4,7 +4,7 @@ Fabric **server-only** addon for managing Cobbleverse rules through a private we
 
 [Leia em português](README.md)
 
-> **Version 0.4.6 — preview.** First use it on a copy of the server and world. See the [validation status](docs/TESTING.md).
+> **Version 0.4.7 — preview.** First use it on a copy of the server and world. See the [validation status](docs/TESTING.md).
 
 ## Features
 

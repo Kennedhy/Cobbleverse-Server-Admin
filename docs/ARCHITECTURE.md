@@ -14,6 +14,7 @@
 - A validação de equipes/armazenamento só inicia por solicitação e avança em lotes. A leitura de arquivos acontece fora da thread principal.
 - No modo de limite RCT, o evento de spawn considera jogadores próximos. A consulta termina assim que um jogador permite o nível original. Se todos tiverem um limite inferior, a regra usa o maior deles. O modo global evita a consulta.
 - O painel não faz polling contínuo do mundo e não inicia varreduras periódicas de entidades ou chunks.
+- A ponte HTTP aceita até dois pedidos pendentes ou em execução na thread do jogo. Um pedido que ainda não começou após três segundos é descartado com HTTP 503. As alterações que já começaram retornam seu resultado normal.
 - O datapack de regras mantém a busca ampla para espécies e spawns, que podem vir de outros namespaces. Para equipes, circuitos, raids e estruturas de ginásio, lê apenas os namespaces que pode modificar. Funções e estruturas de ginásio só são examinadas quando o filtro está ligado.
 
 ## Dependências e otimização

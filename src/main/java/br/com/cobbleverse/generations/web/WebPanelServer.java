@@ -26,9 +26,9 @@ import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -49,6 +49,7 @@ public final class WebPanelServer {
     private final HttpServer http;
     private final ThreadPoolExecutor executor;
     private final WebPanelService service;
+    private final PanelGameRequests gameRequests = new PanelGameRequests(2, Duration.ofSeconds(3));
     private final Map<String, Long> sessions = new ConcurrentHashMap<>();
     private final Map<String, Long> lastAction = new ConcurrentHashMap<>();
     // All connections come from loopback, including connections from the proxy.
@@ -359,18 +360,7 @@ public final class WebPanelServer {
     }
 
     private Object onServer(java.util.concurrent.Callable<Object> task) throws Exception {
-        CompletableFuture<Object> future = new CompletableFuture<>();
-        minecraft.execute(() -> {
-            try { future.complete(task.call()); }
-            catch (Throwable failure) { future.completeExceptionally(failure); }
-        });
-        try { return future.get(); }
-        catch (java.util.concurrent.ExecutionException wrapped) {
-            Throwable cause = wrapped.getCause();
-            if (cause instanceof WebPanelService.Problem problem) throw problem;
-            if (cause instanceof Exception exception) throw exception;
-            throw new IllegalStateException(cause);
-        }
+        return gameRequests.call(minecraft::execute, task);
     }
 
     private void serveAsset(HttpExchange exchange, String path) throws IOException {
