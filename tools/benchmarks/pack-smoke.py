@@ -5,6 +5,7 @@ import hashlib
 import http.cookiejar
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -147,7 +148,10 @@ def run(root):
     shutil.copy2(manager, server / "mods" / manager.name)
     for jar in (client / "mods").glob("*.jar"):
         with zipfile.ZipFile(jar) as mod:
-            if "fabric.mod.json" in mod.namelist() and json.loads(mod.read("fabric.mod.json")).get("id") == "generation_control":
+            # Some Fabric mods use lenient JSON. Inspect only the identity marker.
+            if "fabric.mod.json" in mod.namelist() and re.search(
+                rb'"id"\s*:\s*"generation_control"', mod.read("fabric.mod.json")
+            ):
                 raise RuntimeError("The manager must be absent from the client")
 
     # Only this disposable world binds to loopback and accepts the offline fixture account.
