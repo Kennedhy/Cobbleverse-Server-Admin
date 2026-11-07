@@ -48,6 +48,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for review and licensing expectations.
 
 ## Release process
 
+Group related changes into a release when they form a meaningful update. Keep incremental changes under `Unreleased` in the changelog and use the Build workflow's artifact for testing. The manual **Cobbleverse runtime smoke** workflow accepts a successful Build run ID from `main`.
+
 Releases are created from version tags named `vX.Y.Z`. The GitHub Actions workflow builds the remapped JAR, calculates its SHA-256, and creates a GitHub Release. Before tagging:
 
 - update `mod_version` in `gradle.properties` and the web package version;

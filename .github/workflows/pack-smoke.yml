@@ -4,9 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       manager_tag:
-        description: Published preview tag
+        description: Published preview tag (used when build_run is empty)
         default: v0.4.8
-        required: true
+        type: string
+      build_run:
+        description: Successful Build run ID on main for testing unpublished changes
         type: string
       accept_minecraft_eula:
         description: Accept the Minecraft EULA for this temporary test server
@@ -15,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   smoke:
@@ -37,13 +40,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb xauth libgl1-mesa-dri
           python -m pip install minecraft-launcher-lib==8.0
-      - name: Download release and verify SHA-256
+      - name: Download manager from a release or a verified build
         env:
           GH_TOKEN: ${{ github.token }}
           MANAGER_TAG: ${{ inputs.manager_tag }}
+          BUILD_RUN: ${{ inputs.build_run }}
         run: |
-          [[ "$MANAGER_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           mkdir -p build/pack-smoke/release
+          if [[ -n "$BUILD_RUN" ]]; then
+            [[ "$BUILD_RUN" =~ ^[0-9]+$ ]]
+            build_sha=$(gh run view "$BUILD_RUN" --json workflowName,headBranch,event,conclusion,headSha \
+              --jq 'select(.workflowName == "Build" and .headBranch == "main" and .event == "push" and .conclusion == "success") | .headSha')
+            [[ "$build_sha" =~ ^[0-9a-f]{40}$ ]]
+            gh run download "$BUILD_RUN" --dir build/pack-smoke/release --name "cobbleverse-server-admin-$build_sha"
+            sha256sum build/pack-smoke/release/*.jar
+            exit 0
+          fi
+          [[ "$MANAGER_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           gh release download "$MANAGER_TAG" --dir build/pack-smoke/release --pattern '*.jar' --pattern SHA256SUMS.txt
           cd build/pack-smoke/release
           sha256sum --check SHA256SUMS.txt
