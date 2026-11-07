@@ -6,6 +6,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
@@ -95,7 +96,15 @@ class WebPanelServerHttpTest {
         assertEquals(400, malformed.statusCode());
 
         String oversized = "{\"token\":\"" + "x".repeat(65_536) + "\"}";
-        HttpResponse<String> tooLarge = send("POST", "/api/session", oversized, null, origin());
+        // With a declared oversized length the server can reject before reading the request body.
+        // Stream the body to exercise the read limit without racing that early connection close.
+        HttpRequest streamed = HttpRequest.newBuilder(URI.create(origin() + "/api/session"))
+                .header("Origin", origin())
+                .header("Content-Type", "application/json; charset=utf-8")
+                .POST(HttpRequest.BodyPublishers.ofInputStream(
+                        () -> new ByteArrayInputStream(oversized.getBytes(StandardCharsets.UTF_8))))
+                .build();
+        HttpResponse<String> tooLarge = client.send(streamed, HttpResponse.BodyHandlers.ofString());
         assertEquals(413, tooLarge.statusCode());
     }
 
