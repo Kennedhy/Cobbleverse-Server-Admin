@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "generation_control",
+  "version": "${version}",
+  "name": "Gerenciador COBBLEVERSE",
+  "description": "Gerenciador server-only de gerações, ginásios, XP, níveis, captura e painel web para COBBLEVERSE.",
+  "authors": ["Kennedhy"],
+  "license": "MIT",
+  "environment": "server",
+  "entrypoints": {
+    "server": ["br.com.cobbleverse.generations.GenerationControl"]
+  },
+  "mixins": ["generation_control.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.18.4",
+    "minecraft": "1.21.1",
+    "java": ">=21",
+    "fabric-api": "*",
+    "cobblemon": "1.7.3",
+    "rctmod": "0.18.1-beta",
+    "rctapi": "0.15.2-beta"
+  }
+}

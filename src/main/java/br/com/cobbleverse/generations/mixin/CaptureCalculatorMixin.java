@@ -1,0 +1,20 @@
+package br.com.cobbleverse.generations.mixin;
+
+import br.com.cobbleverse.generations.integration.CaptureManager;
+import com.cobblemon.mod.common.entity.pokeball.EmptyPokeBallEntity;
+import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
+import com.cobblemon.mod.common.pokeball.catching.calculators.CobblemonCaptureCalculator;
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.llamalad7.mixinextras.sugar.Local;
+import net.minecraft.entity.LivingEntity;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+
+@Mixin(value=CobblemonCaptureCalculator.class,remap=false)
+public abstract class CaptureCalculatorMixin {
+    @ModifyExpressionValue(method="processCapture",at=@At(value="INVOKE",target="Lkotlin/math/MathKt;roundToInt(F)I"),remap=false)
+    private int generationControl$captureChance(int original,LivingEntity thrower,EmptyPokeBallEntity ball,PokemonEntity target,
+            @Local(index=13) float modifiedCatchRate,@Local(index=14) boolean critical) {
+        return CaptureManager.threshold(original,thrower,modifiedCatchRate,critical);
+    }
+}

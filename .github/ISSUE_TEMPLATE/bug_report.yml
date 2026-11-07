@@ -1,0 +1,29 @@
+name: Bug report
+description: Report a reproducible problem with the server addon or web panel
+labels: [bug]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the result and what you expected instead.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Minecraft, Fabric, Cobblemon, RCT, and addon versions
+      placeholder: 1.21.1 / Fabric ... / Cobblemon ...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log excerpt
+      description: Remove IPs, tokens, player data, and other private information before posting.

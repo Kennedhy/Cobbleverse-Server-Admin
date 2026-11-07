@@ -1,0 +1,43 @@
+{
+  "required": true,
+  "package": "br.com.cobbleverse.generations.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "WorldSessionMixin",
+    "ResourceManagerMixin",
+    "ResourcePackManagerMixin",
+    "TrainerMobMixin",
+    "TrainerPlayerDataMixin",
+    "SeriesManagerMixin",
+    "StarterHandlerMixin",
+    "MoveFromPcMixin",
+    "SwapFromPcMixin",
+    "BreedingMixin",
+    "BlockCollisionMixin",
+    "EggInventoryMixin",
+    "RandomEggMixin",
+    "RaidBossMixin",
+    "RaidRollMixin",
+    "RaidCrystalMixin",
+    "RaidEntryMixin",
+    "MegaGimmickMixin",
+    "BattleGimmickMixin",
+    "SpaceTimeAltarMixin",
+    "ArceusRitualMixin",
+    "TrialSpawnerMixin",
+    "AspectTransformationMixin",
+    "StoreManagerAccessor",
+    "StoreFactoryAccessor",
+    "StoreCacheAccessor",
+    "StorePathAccessor",
+    "AdditionsSpawnerMixin",
+    "FossilMachineMixin",
+    "TrainerProgressAccessor",
+    "RctExperienceMixin",
+    "RctLevelCapMixin",
+    "CaptureCalculatorMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

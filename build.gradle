@@ -1,0 +1,105 @@
+plugins {
+    id 'fabric-loom' version '1.13.6'
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+base { archivesName = project.archives_base_name }
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.fabricmc.net/' }
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = 'Modrinth'
+                url = 'https://api.modrinth.com/maven'
+            }
+        }
+        filter { includeGroup 'maven.modrinth' }
+    }
+}
+
+dependencies {
+    def fabricApiVersion = '0.116.14+1.21.1'
+
+    minecraft 'com.mojang:minecraft:1.21.1'
+    mappings 'net.fabricmc:yarn:1.21.1+build.3:v2'
+    modImplementation 'net.fabricmc:fabric-loader:0.18.4'
+    // Compile only against the API modules used by source instead of remapping
+    // the full aggregate (which contains unrelated modules and duplicate classes).
+    modImplementation fabricApi.module('fabric-command-api-v2', fabricApiVersion)
+    modImplementation fabricApi.module('fabric-events-interaction-v0', fabricApiVersion)
+    modImplementation fabricApi.module('fabric-lifecycle-events-v1', fabricApiVersion)
+    modImplementation fabricApi.module('fabric-networking-api-v1', fabricApiVersion)
+    // Match the Kotlin version bundled by the target Cobblemon pack instead of
+    // letting the development server load a newer reflection/runtime pair.
+    modImplementation 'net.fabricmc:fabric-language-kotlin:1.13.6+kotlin.2.2.20'
+    // Immutable Modrinth version IDs keep builds independent from a local modpack.
+    modImplementation 'maven.modrinth:cobblemon:kF7CvxTo'
+    modImplementation 'maven.modrinth:rctapi:9OZx0coL'
+    modImplementation 'maven.modrinth:rctmod:gQx1F1dx'
+    modRuntimeOnly 'maven.modrinth:forge-config-api-port:N5qzq0XV'
+    modRuntimeOnly 'maven.modrinth:architectury-api:Wto0RchG'
+    // Forge Config API Port keeps these inside its jar, but Loom's development
+    // run does not expose its nested libraries on the server classpath.
+    runtimeOnly 'com.electronwill.night-config:core:3.8.0'
+    runtimeOnly 'com.electronwill.night-config:toml:3.8.0'
+    modCompileOnly 'maven.modrinth:cobblemonraiddens:Lecb595b'
+    modCompileOnly 'maven.modrinth:lumymon:SSS3twZY'
+    modCompileOnly 'maven.modrinth:legendary-monuments:RtYJBrxd'
+    modCompileOnly 'maven.modrinth:cobblemon-mega-showdown:Y6di9Ram'
+    // GeckoLib is referenced only through the Raid Dens API signature. Keep it
+    // on javac's classpath without asking Loom 1.13 to remap a Loom 1.17-built jar.
+    compileOnly 'maven.modrinth:geckolib:dnJdtm0u'
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand version: project.version }
+}
+
+sourceSets {
+    main {
+        java {
+            // Integration fixtures stay in the source archive, never in the production mod JAR.
+            exclude 'br/com/cobbleverse/generations/verification/**'
+        }
+        resources {
+            srcDir layout.buildDirectory.dir('generated/resources/main')
+        }
+    }
+}
+
+def webDirectory = file('web')
+def windowsBuild = System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('win')
+tasks.register('buildWeb', Exec) {
+    group = 'build'
+    description = 'Builds the browser admin panel into mod resources.'
+    workingDir webDirectory
+    inputs.files(fileTree(webDirectory) { exclude 'node_modules/**', 'dist/**' })
+    outputs.dir(layout.buildDirectory.dir('generated/resources/main/web'))
+    if (windowsBuild) commandLine 'cmd', '/c', 'npm.cmd', 'run', 'build'
+    else commandLine 'npm', 'run', 'build'
+}
+processResources.dependsOn tasks.named('buildWeb')
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+    options.encoding = 'UTF-8'
+}
+java { withSourcesJar() }
+test { useJUnitPlatform() }
+loom {
+    runs {
+        server {
+            runDir 'run/server'
+            vmArgs '-Xmx2G'
+        }
+        client { runDir 'run/client' }
+    }
+}

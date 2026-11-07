@@ -1,0 +1,16 @@
+.gradle/
+build/
+run/
+logs/
+.idea/
+web/node_modules/
+web/dist/
+src/main/resources/web/
+*.iml
+*.hprof
+*.jfr
+*.prof
+.env
+.env.*
+*.token
+*.secret
