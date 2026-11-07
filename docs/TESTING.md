@@ -8,6 +8,13 @@ O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Mo
 
 Para testar mudanças ainda sem release, informe em `build_run` o ID de uma execução bem-sucedida do workflow **Build** na branch `main`. Com esse campo preenchido, o teste usa o artefato da compilação.
 
+## Versão 0.4.8
+
+- O teste do Cobbleverse 1.7.42 iniciou um servidor dedicado com 252 mods e um cliente do pack com 307 mods, sem o JAR do gerenciador. O cliente entrou no servidor.
+- A API do PC recusou acesso sem sessão. Após autenticação, encontrou um Pikachu shiny de nível 13 no PC ao vivo; depois que o cliente saiu e o servidor reiniciou, encontrou o mesmo Pokémon no PC salvo, em modo somente leitura. [Execução e logs](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42425118940).
+- O mesmo smoke test completo passou com o artefato do Build `42425408887`, sem tag ou release. [Execução](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42425573363).
+- O teste confirma esse fluxo no pack de referência. O acesso pelo host dedicado final e o perfil de desempenho com população representativa continuam pendentes.
+
 ## Versão 0.4.7
 
 - A suíte inclui um executor de teste que representa a thread do jogo ocupada. O teste verifica que a fila aceita no máximo duas solicitações, descarta operações vencidas sem executá-las depois e volta a aceitar pedidos quando o executor avança.
@@ -56,10 +63,11 @@ Esse teste não validou host dedicado via SSH, carga real, migração de progres
 
 | Área | Estado | Observação |
 | --- | --- | --- |
-| Compilação e empacotamento | 0.4.5 concluído | Build sem `packDir` local |
-| Metadados server-only | 0.4.5 verificados | Apenas entrypoint de servidor |
+| Compilação e empacotamento | 0.4.8 concluído | Build sem `packDir` local; artefato sem release usado no smoke test completo |
+| Metadados server-only | 0.4.8 verificados | `environment: server`, apenas entrypoint de servidor; cliente do pack entrou sem o JAR |
 | Painel HTTP, token e sessão | 0.4.5 observado localmente | Loopback e proxy de teste com TLS |
-| Cliente do pack sem o addon | 0.4.3 conectado localmente | Repetir na build 0.4.5 |
+| PC dos jogadores | 0.4.8 observado no pack | Consulta autenticada ao PC ao vivo e salvo após reinício |
+| Cliente do pack sem o addon | 0.4.8 conectado em Linux | [Execução do teste](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42425118940) |
 | Spawn, XP, captura, RCT e addons | Parcial | Cobertura varia por evento e versão |
 | Tailscale Serve ou túnel SSH no host de destino | Pendente | Requer host acessível pela rede privada |
 | TPS, heap e memória sob carga | Pendente | Sem benchmark A/B representativo |
