@@ -31,7 +31,7 @@ O inventário da instância local do modpack (137 mods) encontrou estes otimizad
 
 ## Como avaliar o custo
 
-Para isolar o custo do addon, mantenha o mesmo host, pack, cópia do mundo, distâncias de visão e simulação e número de jogadores. Faça uma rodada com o addon ausente e outra com ele ativo. Após o aquecimento, repita períodos equivalentes em repouso e exploração. Faça uma rodada adicional com validação do painel ativa para medir o custo dessa operação. Capture MSPT, TPS, heap e pausas do GC com [spark](https://spark.lucko.me/docs/Command-Usage) ou JFR. Compare p95 e p99 dos ticks e memória do processo. Se o perfil mostrar tempo alto em chunks ou simulação, mude uma distância em `server.properties` por rodada e repita a medição.
+Siga o [procedimento repetível de perfil](PERFORMANCE.md) antes de adicionar otimizadores ou mudar configurações. Ele compara o pack base, o custo fixo do addon e as regras pretendidas com Spark no mesmo host.
 
 Para repetir posições de jogadores em uma cópia de teste, avalie o comando `/player` do [Fabric Carpet](https://github.com/gnembon/fabric-carpet). Use a mesma versão e configuração do Carpet nas duas rodadas. Use clientes do modpack para validar carga de rede, batalhas e captura.
 
