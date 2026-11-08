@@ -4,12 +4,14 @@ O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este doc
 
 ## Teste do pack no GitHub
 
-O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Modrinth, verifica os arquivos e inicia um servidor e um cliente Fabric em uma máquina temporária do GitHub. O JAR informado no formulário é instalado apenas no servidor. O teste usa um mundo descartável e credenciais locais. A partir da 0.4.8, o teste consulta o PC em memória e o arquivo salvo após reiniciar; o smoke `42435709615` também valida o armazenamento carregado enquanto o jogador está conectado.
+O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Modrinth, verifica os arquivos e inicia um servidor e um cliente Fabric em uma máquina temporária do GitHub. O JAR informado no formulário é instalado apenas no servidor. O teste usa um mundo descartável e credenciais locais. A partir da 0.4.8, o teste consulta o PC em memória e o arquivo salvo após reiniciar; os smokes `42435709615` e `42436621152` também validaram o armazenamento carregado enquanto o jogador estava conectado.
 
 Para testar mudanças ainda sem release, informe em `build_run` o ID de uma execução bem-sucedida do workflow **Build** na branch `main`. Com esse campo preenchido, o teste usa o artefato da compilação. O build `42429072403` já inclui o JAR e o helper SSH para Windows como arquivos separados.
 
 ## Alterações após 0.4.8 (sem nova release)
 
+- O commit `a484f14` removeu listas e conjuntos temporários por forma na validação do catálogo de espécies e formas. O Build `42436514507` passou; o smoke `42436621152` passou com o Cobbleverse 1.7.42 e exercitou a prévia em lotes para 1 jogador conectado, além dos testes de painel/PC e cliente sem o JAR. [Execução e logs](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42436621152).
+- A otimização reduz alocações transitórias durante a validação, mas não temos uma medição de bytes alocados, MSPT, heap ou TPS para quantificar o ganho. Continua pendente o A/B no host dedicado.
 - O commit `78d005e` alterou a prévia de jogadores para percorrer stores carregados por iteradores, sem criar uma lista completa temporária do PC. A análise continua limitada a 12 Pokémon ou 3 ms por tick. `gradlew.bat test remapJar` passou localmente; o Build `42435612164` passou testes, empacotamento e verificação server-only.
 - O smoke `42435709615`, com o artefato desse Build, passou no Cobbleverse 1.7.42: 103 JARs no dedicado, 33 client-only omitidos, cliente sem o addon conectado, painel autenticado, PC consultado ao vivo e após reinício, e prévia do painel concluída em lotes para 1 jogador conectado. [Execução e logs](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42435709615).
 - A prévia funcional no runner descarta a cópia integral do PC durante a validação, mas não mede ganho de TPS, heap ou MSPT. O A/B de desempenho representativo ainda depende do host dedicado.
@@ -77,12 +79,12 @@ Esse teste não validou host dedicado via SSH, carga real, migração de progres
 
 | Área | Estado | Observação |
 | --- | --- | --- |
-| Compilação e empacotamento | Build `42435612164` concluído | Testes, JAR remapeado e auditoria server-only |
-| Metadados server-only | Verificados no Build `42435612164` | `environment: server`, só entrypoint dedicado; cliente entrou sem o JAR no smoke `42435709615` |
-| Painel HTTP, token e sessão | Smoke `42435709615` observado | Login autenticado e consulta de estado no servidor temporário |
-| PC dos jogadores | Smoke `42435709615` observado no pack | Consulta autenticada ao PC ao vivo e salvo após reinício |
-| Prévia de armazenamento | Smoke `42435709615` observado no pack | Validação em lotes com 1 jogador conectado |
-| Cliente do pack sem o addon | Smoke `42435709615` conectado em Linux | [Execução do smoke mais recente](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42435709615) |
+| Compilação e empacotamento | Build `42436514507` concluído | Testes, JAR remapeado e auditoria server-only |
+| Metadados server-only | Verificados no Build `42436514507` | `environment: server`, só entrypoint dedicado; cliente entrou sem o JAR no smoke `42436621152` |
+| Painel HTTP, token e sessão | Smoke `42436621152` observado | Login autenticado e consulta de estado no servidor temporário |
+| PC dos jogadores | Smoke `42436621152` observado no pack | Consulta autenticada ao PC ao vivo e salvo após reinício |
+| Prévia de armazenamento | Smoke `42436621152` observado no pack | Validação em lotes com 1 jogador conectado |
+| Cliente do pack sem o addon | Smoke `42436621152` conectado em Linux | [Execução do smoke mais recente](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42436621152) |
 | Spawn, XP, captura, RCT e addons | Parcial | Cobertura varia por evento e versão |
 | Tailscale Serve ou túnel SSH no host de destino | Pendente | Requer host acessível pela rede privada |
 | TPS, heap e memória sob carga | Pendente | Sem benchmark A/B representativo |
