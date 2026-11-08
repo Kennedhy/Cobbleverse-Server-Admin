@@ -27,6 +27,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
       - uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic
@@ -35,6 +38,11 @@ jobs:
         run: npm ci --prefix web
       - name: Test and build server mod
         run: ./gradlew --no-daemon --max-workers=1 test remapJar
+      - name: Verify server-only artifact
+        run: |
+          version=$(sed -n 's/^mod_version=//p' gradle.properties)
+          test -n "$version"
+          python3 tools/verify_server_jar.py "build/libs/cobbleverse-generation-control-${version}.jar"
       - name: Include server administration tools
         run: cp tools/open-admin-tunnel.ps1 tools/prepare_server_mods.py build/libs/
       - uses: actions/upload-artifact@v7
