@@ -6,6 +6,8 @@ logs/
 web/node_modules/
 web/dist/
 src/main/resources/web/
+__pycache__/
+*.py[cod]
 *.iml
 *.hprof
 *.jfr

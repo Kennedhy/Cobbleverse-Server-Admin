@@ -17,6 +17,9 @@ import zipfile
 
 from minecraft_launcher_lib import command, mod_loader
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from prepare_server_mods import prepare_server_mods
+
 
 PACK = "https://cdn.modrinth.com/data/Jkb29YJU/versions/4SKGla61/COBBLEVERSE%201.7.42.mrpack"
 PACK_SHA512 = (
@@ -61,9 +64,12 @@ def install_pack(root, server, client):
     archive = root / "cobbleverse.mrpack"
     download(PACK, archive, PACK_SHA512)
     with zipfile.ZipFile(archive) as bundle:
-        index = json.loads(bundle.read("modrinth.index.json"))
+        index_bytes = bundle.read("modrinth.index.json")
+        index = json.loads(index_bytes)
         if index["dependencies"] != {"minecraft": "1.21.1", "fabric-loader": "0.18.4"}:
             raise ValueError("Unexpected pack dependency versions")
+        index_path = root / "modrinth.index.json"
+        index_path.write_bytes(index_bytes)
 
         def install(file):
             relative = file["path"]
@@ -92,7 +98,19 @@ def install_pack(root, server, client):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     with bundle.open(entry) as source, target.open("wb") as output:
                         shutil.copyfileobj(source, output)
-    print(f"Installed {len(index['files'])} pinned pack files.")
+
+    filtered = server / "mods-filtered"
+    report = prepare_server_mods(server / "mods", index_path, filtered)
+    original = server / "mods"
+    unfiltered = server / "mods-unfiltered"
+    if unfiltered.exists():
+        raise RuntimeError("Unexpected existing unfiltered mods folder in the disposable smoke server")
+    original.rename(unfiltered)
+    filtered.rename(original)
+    print(
+        f"Installed {len(index['files'])} pinned pack files; dedicated server uses "
+        f"{len(report['included'])} JARs and omits {len(report['client_only'])} client-only JARs."
+    )
 
 
 def panel_smoke(server):

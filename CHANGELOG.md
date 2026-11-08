@@ -6,6 +6,7 @@ Notable changes for each release are recorded here. Versions follow `MAJOR.MINOR
 
 - Prevent XP group renames from overwriting an existing group and silently reassigning players.
 - Include the Windows SSH tunnel helper with build artifacts and future release assets.
+- Add a safe server-mod folder builder that preserves the client installation and omits explicit client-only JARs from the dedicated server copy.
 - Clarify private HTTPS and SSH tunnel setup for administrators on dedicated hosts.
 
 ## [0.4.8] — Preview

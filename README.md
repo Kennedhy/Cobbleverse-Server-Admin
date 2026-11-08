@@ -37,7 +37,7 @@ As integrações de raids, megaevoluções e spawns de outros mods dependem das 
 ## Instalação no servidor
 
 1. Faça backup e valide o addon em uma cópia do servidor e do mundo.
-2. Baixe o JAR na página de [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases). As próximas releases também terão o helper `open-admin-tunnel.ps1` como asset separado para acesso SSH no Windows. Se uma release antiga não tiver esse arquivo, obtenha o código-fonte da mesma versão e use `tools/open-admin-tunnel.ps1`.
+2. Baixe o JAR na página de [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases). As próximas releases também terão `open-admin-tunnel.ps1` e `prepare-server-mods.py` como ferramentas separadas. Se uma release antiga não tiver esses arquivos, obtenha o código-fonte da mesma versão.
 3. Coloque o JAR somente na pasta `mods/` do servidor Fabric. Não o instale nos clientes.
 4. Inicie o servidor e, como administrador, execute `/geracoes web` para ver o endereço e o caminho do token.
 5. No computador do servidor, abra `http://127.0.0.1:8765` e cole o token. Para acesso remoto, configure HTTPS privado ou um túnel SSH. Veja [Administração do painel](docs/ADMIN.md).
@@ -66,7 +66,7 @@ O JAR remapeado fica em `build/libs/`. React, Vite e Node geram os arquivos est�
 
 ## Segurança e desempenho
 
-O servidor HTTP usa o JDK, autenticação por token e sessão, validação de origem e sem CORS. O token é criado dentro dos dados do mundo; o mod tenta restringir as permissões do arquivo ao usuário do servidor. O helper PowerShell, distribuído separadamente do JAR, facilita um túnel SSH no Windows. Mais detalhes em [Administração](docs/ADMIN.md).
+O servidor HTTP usa o JDK, autenticação por token e sessão, validação de origem e sem CORS. O token é criado dentro dos dados do mundo; o mod tenta restringir as permissões do arquivo ao usuário do servidor. O helper PowerShell facilita um túnel SSH no Windows; `prepare-server-mods.py` cria uma cópia de mods para servidor sem alterar a instância cliente. Mais detalhes em [Administração](docs/ADMIN.md).
 
 O addon não varre jogadores, Pokémon, entidades ou chunks continuamente. Validações pesadas só começam após solicitação administrativa e são processadas em lotes. Não foram incluídas cópias de outros mods nem uma segunda camada de otimização. **Ainda não há benchmark A/B que prove ganho de TPS ou memória**; consulte [arquitetura e custo](docs/ARCHITECTURE.md).
 

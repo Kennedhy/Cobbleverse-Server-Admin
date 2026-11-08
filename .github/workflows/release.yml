@@ -37,8 +37,9 @@ jobs:
           mkdir -p release
           cp "build/libs/cobbleverse-generation-control-${version}.jar" "release/cobbleverse-generation-control-${version}.jar"
           cp tools/open-admin-tunnel.ps1 release/open-admin-tunnel.ps1
+          cp tools/prepare-server-mods.py release/prepare-server-mods.py
           cd release
-          sha256sum "cobbleverse-generation-control-${version}.jar" open-admin-tunnel.ps1 > SHA256SUMS.txt
+          sha256sum "cobbleverse-generation-control-${version}.jar" open-admin-tunnel.ps1 prepare-server-mods.py > SHA256SUMS.txt
       - name: Publish preview release
         env:
           GH_TOKEN: ${{ github.token }}

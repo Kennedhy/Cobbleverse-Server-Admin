@@ -37,7 +37,7 @@ Você também pode usar um proxy HTTPS já instalado no mesmo host. Configure um
 
 ### Helper do Windows
 
-O arquivo `open-admin-tunnel.ps1` é publicado como download separado junto com o JAR nas próximas releases. No checkout do código-fonte, ele fica em `tools/open-admin-tunnel.ps1`.
+O arquivo `open-admin-tunnel.ps1` acompanha o JAR como arquivo separado nos artefatos do workflow Build e nas próximas releases. No checkout do código-fonte, fica em `tools/open-admin-tunnel.ps1`.
 
 Com OpenSSH e um alias configurado no `~/.ssh/config`:
 
@@ -55,6 +55,21 @@ O helper escolhe uma porta loopback livre, verifica a resposta do painel e mostr
 ```
 
 Em um servidor Windows, adicione `-RemoteTokenShell Windows` e use o caminho Windows do arquivo. A janela do PowerShell mantém o túnel aberto; `Ctrl+C` encerra a conexão. O token permanece na área de transferência até ser substituído.
+
+### Preparar a pasta de mods do dedicado
+
+O utilitário `prepare-server-mods.py` acompanha os artefatos do workflow Build e as próximas releases. Ele cria uma nova pasta somente com JARs compatíveis com o servidor. Lê o `modrinth.index.json`, exclui JARs marcados como `environment: client` pelo Fabric e preserva os demais arquivos da instância de origem. Não altera a instância do cliente, não copia configs e recusa sobrescrever uma pasta de destino existente. O relatório ao lado da pasta mostra o que foi incluído e excluído. O Fabric confirma que mods com `environment: client` não são carregados em servidores dedicados ([metadados `fabric.mod.json`](https://docs.fabricmc.net/develop/loader/fabric-mod-json)).
+
+Exemplo no PowerShell, usando a instalação local do pack como origem e uma pasta nova como destino:
+
+```powershell
+python .\tools\prepare-server-mods.py `
+  'C:\caminho\da\instancia\minecraft\mods' `
+  'C:\caminho\da\instancia\mrpack\modrinth.index.json' `
+  'D:\Cobbleverse\staging\mods'
+```
+
+Transfira os JARs gerados para a pasta `mods` do servidor dedicado parado; mantenha no servidor as configurações, datapacks e arquivos próprios do pacote. O inventário local do Cobbleverse 1.7.42 tinha 135 JARs no índice: 33 declaram `environment: client` no nível principal. O filtro local gerou 103 JARs porque também preservou um mod extra instalado fora do índice. A economia de arquivos/dados reduz o trabalho de leitura na inicialização, mas o impacto em TPS e memória precisa ser medido no host.
 
 ### Túnel manual
 

@@ -6,7 +6,7 @@ Este procedimento mede o custo do modpack e do gerenciador sem confundir diferen
 
 1. Instale o [Spark para Fabric 1.21.1](https://modrinth.com/mod/spark/versions) apenas na cópia do servidor. Os jogadores não precisam instalar Spark.
 2. Registre versão do modpack, Java, argumentos da JVM, RAM, `server.properties`, mods ativos e configuração do gerenciador.
-3. Faça uma cópia do mesmo mundo pré-gerado para cada rodada. Use a mesma quantidade de jogadores, os mesmos clientes, posições e percurso. Não explore chunks novos em somente uma das rodadas.
+3. Prepare a pasta `mods` do dedicado com `tools/prepare-server-mods.py` e use a mesma pasta filtrada nos quatro cenários. Faça uma cópia do mesmo mundo pré-gerado para cada rodada. Use a mesma quantidade de jogadores, os mesmos clientes, posições e percurso. Não explore chunks novos em somente uma das rodadas.
 4. Deixe os jogadores e o mundo aquecerem por cinco minutos antes de cada medição. Repita cada cenário três vezes.
 
 ## Cenários

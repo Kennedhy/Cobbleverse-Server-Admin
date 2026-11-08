@@ -34,7 +34,7 @@ Raid, mega-evolution, and other spawn integrations depend on the versions in the
 ## Server installation
 
 1. Back up the server and world, then validate the addon on a copy.
-2. Download the JAR from [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases). Future releases will also provide `open-admin-tunnel.ps1` as a separate asset for Windows SSH access. If an older release lacks it, download that version's source archive and use `tools/open-admin-tunnel.ps1`.
+2. Download the JAR from [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases). Future releases will also provide `open-admin-tunnel.ps1` and `prepare-server-mods.py` as separate tools. If an older release lacks them, download that version's source archive.
 3. Put the JAR in the Fabric server's `mods/` folder only. Do not install it on clients.
 4. Start the server and run `/geracoes web` as an administrator to get the panel address and token path.
 5. On the server machine, open `http://127.0.0.1:8765` and enter the token. For remote access, configure private HTTPS or an SSH tunnel. See [Panel administration](docs/ADMIN.md).
@@ -54,7 +54,7 @@ The remapped JAR is written to `build/libs/`. React, Vite, and Node generate the
 
 ## Security and performance
 
-The JDK HTTP server uses a token, session, origin validation, and no CORS. The token is stored with world data; the mod attempts to restrict file permissions to the server account. The included Windows helper opens an SSH tunnel. See [administration](docs/ADMIN.md).
+The JDK HTTP server uses a token, session, origin validation, and no CORS. The token is stored with world data; the mod attempts to restrict file permissions to the server account. The Windows helper opens an SSH tunnel; `prepare-server-mods.py` builds a server mod folder without changing the client installation. See [administration](docs/ADMIN.md).
 
 The addon does not continuously scan players, Pokémon, entities, or chunks. Heavy validation starts only when an administrator requests it and is processed in batches. No third-party mod code or duplicate optimization layer is bundled. **There is no A/B benchmark proving TPS or memory improvements yet**; see [architecture and cost](docs/ARCHITECTURE.md).
 
