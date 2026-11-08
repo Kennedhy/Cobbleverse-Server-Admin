@@ -196,8 +196,19 @@ def panel_request(opener, path, payload=None):
     data = None if payload is None else json.dumps(payload).encode()
     headers = {} if payload is None else {"Content-Type": "application/json", "Origin": PANEL_ADDRESS}
     request = urllib.request.Request(PANEL_ADDRESS + path, data=data, headers=headers)
-    with opener.open(request, timeout=10) as response:
-        return json.load(response)
+    for attempt in range(2):
+        try:
+            with opener.open(request, timeout=10) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as failure:
+            if failure.code != 429 or attempt > 0:
+                raise
+            body = json.load(failure)
+            failure.close()
+            if body.get("message") != "Aguarde um instante antes de enviar outra alteração.":
+                raise
+            # Match the panel's per-session write throttle before retrying once.
+            time.sleep(0.35)
 
 
 def wait_for_job(opener, action, terminal, seconds=240):
