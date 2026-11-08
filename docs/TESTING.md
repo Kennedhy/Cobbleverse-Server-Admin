@@ -4,12 +4,15 @@ O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este doc
 
 ## Teste do pack no GitHub
 
-O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Modrinth, verifica os arquivos e inicia um servidor e um cliente Fabric em uma máquina temporária do GitHub. O JAR informado no formulário é instalado apenas no servidor. O teste usa um mundo descartável e credenciais locais. A partir da 0.4.8, o teste também consulta o PC em memória e o arquivo salvo após reiniciar; a próxima execução do smoke acrescenta uma validação do armazenamento carregado enquanto o jogador está conectado.
+O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Modrinth, verifica os arquivos e inicia um servidor e um cliente Fabric em uma máquina temporária do GitHub. O JAR informado no formulário é instalado apenas no servidor. O teste usa um mundo descartável e credenciais locais. A partir da 0.4.8, o teste consulta o PC em memória e o arquivo salvo após reiniciar; o smoke `42435709615` também valida o armazenamento carregado enquanto o jogador está conectado.
 
 Para testar mudanças ainda sem release, informe em `build_run` o ID de uma execução bem-sucedida do workflow **Build** na branch `main`. Com esse campo preenchido, o teste usa o artefato da compilação. O build `42429072403` já inclui o JAR e o helper SSH para Windows como arquivos separados.
 
 ## Alterações após 0.4.8 (sem nova release)
 
+- O commit `78d005e` alterou a prévia de jogadores para percorrer stores carregados por iteradores, sem criar uma lista completa temporária do PC. A análise continua limitada a 12 Pokémon ou 3 ms por tick. `gradlew.bat test remapJar` passou localmente; o Build `42435612164` passou testes, empacotamento e verificação server-only.
+- O smoke `42435709615`, com o artefato desse Build, passou no Cobbleverse 1.7.42: 103 JARs no dedicado, 33 client-only omitidos, cliente sem o addon conectado, painel autenticado, PC consultado ao vivo e após reinício, e prévia do painel concluída em lotes para 1 jogador conectado. [Execução e logs](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42435709615).
+- A prévia funcional no runner descarta a cópia integral do PC durante a validação, mas não mede ganho de TPS, heap ou MSPT. O A/B de desempenho representativo ainda depende do host dedicado.
 - O commit `dd37a65` adicionou `prepare_server_mods.py`, ferramenta que cria uma pasta de mods do dedicado sem modificar a instância cliente. O parser só exclui JARs cujo ambiente principal do Fabric declara `client`; campos de mixin não são confundidos com o ambiente do mod.
 - O Build `42433384510`, no commit de correção `f981837`, passou e publicou o artefato com o JAR e os dois utilitários separados. [Execução do Build](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42433384510).
 - O Build `42434681831` passou pela nova auditoria automática do JAR: ambiente `server`, só entrypoint dedicado, sem referências às classes Minecraft client, 99 classes/33 mixins e assets web presentes; o arquivo tem 323.654 bytes. [Log do Build](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42434681831).
@@ -74,11 +77,12 @@ Esse teste não validou host dedicado via SSH, carga real, migração de progres
 
 | Área | Estado | Observação |
 | --- | --- | --- |
-| Compilação e empacotamento | 0.4.8 concluído | Build `42429072403`; artefato contém JAR e helper SSH separado |
-| Metadados server-only | 0.4.8 verificados | `environment: server`, apenas entrypoint de servidor; cliente do pack entrou sem o JAR no smoke `42429289309` |
-| Painel HTTP, token e sessão | 0.4.5 observado localmente | Loopback e proxy de teste com TLS |
-| PC dos jogadores | 0.4.8 observado no pack | Consulta autenticada ao PC ao vivo e salvo após reinício no smoke `42429289309` |
-| Cliente do pack sem o addon | 0.4.8 conectado em Linux | [Execução do smoke mais recente](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42429289309) |
+| Compilação e empacotamento | Build `42435612164` concluído | Testes, JAR remapeado e auditoria server-only |
+| Metadados server-only | Verificados no Build `42435612164` | `environment: server`, só entrypoint dedicado; cliente entrou sem o JAR no smoke `42435709615` |
+| Painel HTTP, token e sessão | Smoke `42435709615` observado | Login autenticado e consulta de estado no servidor temporário |
+| PC dos jogadores | Smoke `42435709615` observado no pack | Consulta autenticada ao PC ao vivo e salvo após reinício |
+| Prévia de armazenamento | Smoke `42435709615` observado no pack | Validação em lotes com 1 jogador conectado |
+| Cliente do pack sem o addon | Smoke `42435709615` conectado em Linux | [Execução do smoke mais recente](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42435709615) |
 | Spawn, XP, captura, RCT e addons | Parcial | Cobertura varia por evento e versão |
 | Tailscale Serve ou túnel SSH no host de destino | Pendente | Requer host acessível pela rede privada |
 | TPS, heap e memória sob carga | Pendente | Sem benchmark A/B representativo |
