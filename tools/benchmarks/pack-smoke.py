@@ -474,7 +474,8 @@ def connected_verification_smoke(root, server, client, installed, mode, username
         raise RuntimeError(f"Expected one connected gameplay fixture, found {len(fixtures)}")
     shutil.copy2(fixtures[0], server / "mods" / fixtures[0].name)
 
-    result_path = server / f"connected-{mode}-result.json"
+    result_filename = "connected-wild-result.json" if mode == "wild-levels" else f"connected-{mode}-result.json"
+    result_path = server / result_filename
     result_path.unlink(missing_ok=True)
     server_log = root / f"server-{mode}.log"
     clients = []
