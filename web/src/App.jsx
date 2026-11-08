@@ -5,24 +5,30 @@ import { ActionBar } from './components/ActionBar.jsx';
 import SpeciesSearch from './components/SpeciesSearch.jsx';
 import { Sidebar } from './components/Sidebar.jsx';
 import { Loading } from './components/ui.jsx';
+import AccessPage from './pages/AccessPage.jsx';
 import CapturePage from './pages/CapturePage.jsx';
 import DiagnosticsPage from './pages/DiagnosticsPage.jsx';
 import ExperiencePage from './pages/ExperiencePage.jsx';
 import GenerationPage from './pages/GenerationPage.jsx';
 import GymPage from './pages/GymPage.jsx';
+import HistoryPage from './pages/HistoryPage.jsx';
 import OverviewPage from './pages/OverviewPage.jsx';
 import PlayerPcPage from './pages/PlayerPcPage.jsx';
+import PresetsPage from './pages/PresetsPage.jsx';
 import RulesPage from './pages/RulesPage.jsx';
 import WorldPage from './pages/WorldPage.jsx';
 
 const pages = {
   overview: ['Visão geral', OverviewPage],
+  access: ['Acessos', AccessPage],
   generations: ['Gerações', GenerationPage],
   gyms: ['Ginásios', GymPage],
   rules: ['Regras', RulesPage],
   experience: ['XP e níveis', ExperiencePage],
   capture: ['Captura', CapturePage],
   pc: ['PC dos jogadores', PlayerPcPage],
+  history: ['Histórico', HistoryPage],
+  presets: ['Presets e arquivos', PresetsPage],
   world: ['Mundo', WorldPage],
   diagnostics: ['Diagnóstico', DiagnosticsPage],
 };
@@ -34,8 +40,8 @@ function Login({ onLogin, error, busy }) {
     <form className="login-panel" onSubmit={submit}>
       <div className="login-brand"><span className="brand-mark"><Server size={20} /></span><span>Cobbleverse <small>Control</small></span></div>
       <h1>Entrar no servidor</h1>
-      <p>Use o token criado pelo mod. No servidor, ele fica em <code>&lt;mundo&gt;/generation-control/web-access.token</code>.</p>
-      <label className="field"><span className="field-label">Token do administrador</span>
+      <p>Use uma credencial individual criada em <strong>Acessos</strong> ou o token compartilhado inicial do servidor.</p>
+      <label className="field"><span className="field-label">Token de acesso</span>
         <input type="password" value={token} autoComplete="current-password" autoFocus onChange={(event) => setToken(event.target.value)} placeholder="Cole o token deste servidor" />
       </label>
       {error && <p className="login-error"><AlertCircle size={15} />{error}</p>}
@@ -43,7 +49,7 @@ function Login({ onLogin, error, busy }) {
       <details className="login-access-help">
         <summary>Como acessar de outro computador</summary>
         <div>
-          <p>Execute <code>/geracoes web</code> no console do servidor para consultar o caminho do token. O comando nunca mostra o token.</p>
+          <p>Execute <code>/geracoes web</code> no console para ver os caminhos das credenciais compartilhadas iniciais. Credenciais individuais ficam em <code>generation-control/web-users</code>. O comando nunca mostra tokens existentes.</p>
           <div className="login-access-option"><strong>Endereço HTTPS privado</strong><span>Se o administrador do servidor configurou Tailscale Serve ou um proxy HTTPS privado, conecte-se à rede autorizada e abra o endereço configurado em <code>web.properties</code>.</span></div>
           <div className="login-access-option"><strong>Túnel SSH no Windows</strong><span>Baixe <code>open-admin-tunnel.ps1</code> como asset separado quando ele estiver disponível na release. Se não estiver, o script também fica em <code>tools/</code> no código-fonte:</span>
             <pre><code>.\open-admin-tunnel.ps1 -Server &lt;alias-SSH&gt; -RemoteTokenPath '&lt;caminho-mostrado-pelo-comando&gt;' -CopyToken -OpenBrowser</code></pre>
@@ -73,6 +79,7 @@ export default function App() {
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState('');
   const [state, setState] = useState(null);
+  const [canEdit, setCanEdit] = useState(true);
   const [draft, setDraft] = useState(null);
   const [baseline, setBaseline] = useState('');
   const baselineRef = useRef('');
@@ -89,13 +96,18 @@ export default function App() {
 
   const adopt = useCallback((next, candidate = newConfig(next)) => {
     setState(next);
+    setCanEdit(next.accessRole !== 'viewer');
     const snapshot = stable(candidate);
     setDraft(candidate);
     baselineRef.current = snapshot;
     setBaseline(snapshot);
     setBaseRevision(next.editRevision);
     setValidated(null);
-    setDockMessage(next.pending ? 'Há alterações pendentes. Reinicie o servidor para aplicá-las.' : '');
+    setDockMessage(next.pending
+      ? next.pendingGameplaySettingsDiffer
+        ? `XP, limites e captura da revisão ${next.pending.revision} ainda não estão aplicados ao vivo.`
+        : 'XP, limites e captura já correspondem ao servidor; as demais regras aguardam reinício.'
+      : '');
   }, []);
 
   const loadState = useCallback(async (force = false) => {
@@ -136,6 +148,7 @@ export default function App() {
   };
 
   const update = (patch) => {
+    if (!canEdit) return;
     setDraft((current) => {
       if (!current) return current;
       const next = { ...current, ...patch };
@@ -179,8 +192,8 @@ export default function App() {
         continue;
       }
       busyAttempts = 0;
-      if (next.editRevision !== baseRevision) throw new Error('A revisão do servidor mudou durante a análise. Atualize o painel.');
       if (!next.job || next.job.id !== jobId) throw new Error('A validação não está mais disponível. Atualize o painel.');
+      if (next.editRevision !== baseRevision && next.job.status === 'running' && next.job.action !== 'save') throw new Error('A revisão do servidor mudou durante a operação. Atualize o painel.');
       setState((current) => current ? { ...current, job: next.job } : current);
       if (next.job.status !== 'running') return next.job;
     }
@@ -233,8 +246,10 @@ export default function App() {
       const result = await request('/api/action', { method: 'POST', body: {
         action: 'save', expectedRevision: baseRevision, candidate: copy(draft), fingerprint: validated.fingerprint,
       } });
-      adopt(result.state, newConfig(result.state));
-      setToast({ tone: 'success', message: result.message });
+      const job = result.job.status === 'running' ? await waitForJob(result.job.id) : result.job;
+      if (job.status !== 'saved' || !job.state) throw new Error(job.message || 'O salvamento não foi confirmado. Atualize o painel para conferir o estado.');
+      adopt(job.state, newConfig(job.state));
+      setToast({ tone: 'success', message: job.message });
       setPage('diagnostics');
     } catch (failure) {
       setValidated(null); setDockMessage(failure.message); setToast({ tone: 'error', message: failure.message });
@@ -242,16 +257,52 @@ export default function App() {
     } finally { setWorking(''); }
   };
 
-  const recoveryAction = async (action) => {
+  const applyLiveSettings = async () => {
+    if (dirty || !state?.pending || !state.pendingGameplaySettingsDiffer) return;
+    const revision = state.pending.revision;
+    if (!window.confirm(`Aplicar agora XP, limites de nível e captura da revisão ${revision}? Gerações, ginásios e regras do mundo continuarão aguardando o reinício.`)) return;
+    setWorking('applyLiveSettings');
+    try {
+      const next = await request('/api/action', { method: 'POST', body: {
+        action: 'applyLiveSettings', expectedRevision: baseRevision,
+      } });
+      setState(next);
+      setDockMessage(`XP, limites e captura da revisão ${revision} foram aplicados ao vivo. As demais regras continuam pendentes até reiniciar.`);
+      setToast({ tone: 'success', message: `XP, limites e captura da revisão ${revision} estão ativos.` });
+    } catch (failure) {
+      setDockMessage(failure.message); setToast({ tone: 'error', message: failure.message });
+      if (failure.status === 401) { setAuth(false); setAuthError('Sua sessão expirou. Entre novamente.'); }
+    } finally { setWorking(''); }
+  };
+
+  const cancelValidation = async () => {
+    setWorking('cancelValidation');
+    try {
+      const result = await request('/api/action', { method: 'POST', body: {
+        action: 'cancelValidation', expectedRevision: baseRevision,
+      } });
+      setState((current) => current ? { ...current, job: result.job } : current);
+      setToast({ tone: 'success', message: result.job.message });
+    } catch (failure) {
+      setToast({ tone: 'error', message: failure.message });
+      if (failure.status === 401) { setAuth(false); setAuthError('Sua sessão expirou. Entre novamente.'); }
+    } finally { setWorking(''); }
+  };
+
+  const recoveryAction = async (action, targetRevision) => {
     const prompt = action === 'restore'
       ? 'Preparar a revisão anterior para o próximo reinício?'
-      : 'Descartar a configuração pendente do próximo reinício?';
+      : action === 'restoreRevision'
+        ? `Preparar a revisão ${targetRevision} para o próximo reinício${pending ? '? Isso substituirá a configuração pendente atual.' : '?'} `
+        : 'Descartar a configuração pendente do próximo reinício?';
     if (!window.confirm(prompt)) return;
     setWorking(action);
     try {
-      const result = await request('/api/action', { method: 'POST', body: { action, expectedRevision: baseRevision } });
-      adopt(result.state, newConfig(result.state));
-      setToast({ tone: 'success', message: result.message });
+      const result = await request('/api/action', { method: 'POST', body: { action, expectedRevision: baseRevision, targetRevision } });
+      const job = result.job.status === 'running' ? await waitForJob(result.job.id) : result.job;
+      if (job.status !== 'completed' || !job.state) throw new Error(job.message || 'A operação não foi confirmada. Atualize o painel para conferir o estado.');
+      adopt(job.state, newConfig(job.state));
+      setToast({ tone: 'success', message: job.message });
     } catch (failure) { setToast({ tone: 'error', message: failure.message }); }
     finally { setWorking(''); }
   };
@@ -259,6 +310,12 @@ export default function App() {
   const logout = async () => {
     try { await request('/api/session', { method: 'DELETE' }); } catch { /* The session is removed when the server stops. */ }
     setState(null); setDraft(null); setAuth(false); setValidated(null);
+  };
+
+  const currentCredentialRevoked = () => {
+    setState(null); setDraft(null); setValidated(null);
+    setAuthError('Sua credencial foi revogada. Entre novamente com outra conta.');
+    setAuth(false);
   };
 
   const Page = pages[page]?.[1] || GenerationPage;
@@ -269,26 +326,34 @@ export default function App() {
   if (auth !== true) return <Login onLogin={login} error={authError} busy={authBusy} />;
   if (!state || !draft) return <main className="loading-screen"><Loading>Carregando configurações…</Loading></main>;
 
-  return <div className="app-shell">
+  return <div className={`app-shell${canEdit ? '' : ' app-read-only'}`}>
     <header className="topbar">
       <div className="top-brand"><span className="brand-mark"><Box size={22} strokeWidth={1.7} /></span><span>Cobbleverse Control</span></div>
       <button className="icon-button mobile-menu" aria-label="Abrir navegação" onClick={() => setMobileNav(true)}><Menu size={19} /></button>
       <div className="topbar-context"><span className="server-led" /><strong>Servidor ativo</strong><span className="topbar-separator" />
         <span>Mundo {state.world}</span><span className="topbar-separator" /><span>Revisão ativa {state.active.revision}</span>
         {pending && <span className="pending-pill">Pendente {state.pending.revision}</span>}
+        <span className="account-pill">Acesso: {state.accessActor}</span>
+        {!canEdit && <span className="role-pill">Somente consulta</span>}
       </div>
       <button className="text-button logout-button" onClick={logout}>Sair</button>
     </header>
-    <Sidebar page={page} onPage={setPage} open={mobileNav} onClose={() => setMobileNav(false)} />
+    <Sidebar page={page} onPage={setPage} open={mobileNav} onClose={() => setMobileNav(false)} canEdit={canEdit} />
     <div className="main-column">
-      <main className="workspace">
+      <main className="workspace" inert={!canEdit && !['overview', 'pc', 'history', 'presets', 'diagnostics', 'experience'].includes(page)}>
         {working === 'refresh' && <div className="connection-banner"><Loading>Atualizando estado do servidor…</Loading></div>}
         {dirty && <div className="workspace-head"><span className="draft-marker">Rascunho não salvo · {pageTitle}</span></div>}
         <Page draft={draft} update={update} state={state}
+          canEdit={canEdit}
+          onSessionRevoked={currentCredentialRevoked}
           onSearch={() => setSpeciesOpen(true)} onPage={setPage}
-          onRestore={() => recoveryAction('restore')} onDiscard={() => recoveryAction('discard')} />
-        <ActionBar onRefresh={refresh} onValidate={validate} onSave={save} dirty={dirty}
-          validated={signatureMatches} working={Boolean(working)} pending={pending} message={dockMessage} />
+          onRestore={() => recoveryAction('restore')} onDiscard={() => recoveryAction('discard')}
+          onRestoreRevision={(revision) => recoveryAction('restoreRevision', revision)}
+          onCancelValidation={cancelValidation} />
+        {canEdit && <ActionBar onRefresh={refresh} onValidate={validate} onSave={save} dirty={dirty}
+          onApplyLive={applyLiveSettings} applyLiveAvailable={state.pendingGameplaySettingsDiffer}
+          liveGameplayRevision={state.liveGameplayRevision}
+          validated={signatureMatches} working={Boolean(working)} pending={pending} message={dockMessage} />}
       </main>
     </div>
     {speciesOpen && <SpeciesSearch draft={draft} update={update} onClose={() => setSpeciesOpen(false)} />}

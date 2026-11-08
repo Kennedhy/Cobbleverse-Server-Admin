@@ -3,11 +3,27 @@
 ## Primeiro acesso
 
 1. Inicie o servidor Fabric com o addon instalado somente no servidor.
-2. Execute `/geracoes web` no console ou como operador. O comando mostra o endereço local e o caminho do token.
-3. No próprio computador do servidor, abra `http://127.0.0.1:8765` e informe o token de `<mundo>/generation-control/web-access.token`.
-4. Mantenha esse arquivo privado. Não coloque o token em URL, log público, captura de tela ou conversa.
+2. Execute `/geracoes web` no console ou como operador. O comando mostra o endereço local e os caminhos dos tokens compartilhados.
+3. No próprio computador do servidor, abra `http://127.0.0.1:8765` e informe uma credencial:
+   - `web-access.token`: administrador compartilhado inicial; permite alterar, validar, salvar, restaurar e descartar configurações.
+   - `web-view-access.token`: consulta compartilhada inicial; permite ver estado, PCs, histórico e usar o simulador, mas não alterar configurações.
+4. Mantenha os arquivos privados. Não coloque tokens em URL, log público, captura de tela ou conversa.
 
-O token é uma credencial administrativa. O addon tenta aplicar ACL restrita ao usuário que executa o servidor no Windows, ou modo POSIX `0600` quando o sistema oferece suporte. Revise as permissões do arquivo no seu host.
+Depois do primeiro acesso, abra **Acessos** e crie uma credencial individual para cada administrador ou pessoa de consulta. O token novo é mostrado uma vez; copie-o e guarde-o como uma senha. O histórico identifica mudanças feitas no navegador com `web:<identificador>`. Um identificador revogado fica reservado para preservar a leitura das revisões antigas. Tokens compartilhados aparecem com os identificadores `admin-compartilhado` e `consulta-compartilhada`, que identificam a credencial, não uma pessoa.
+
+A página **Acessos** revoga credenciais individuais e encerra imediatamente as sessões correspondentes. Para deixar de usar os tokens compartilhados, crie ao menos um administrador individual e revogue `admin-compartilhado` e/ou `consulta-compartilhada` nessa página. A revogação grava um marcador para impedir que o token seja recriado no próximo início. O acesso administrativo compartilhado não pode ser revogado enquanto for o último administrador. Para reativar um token compartilhado, com o servidor parado remova o marcador `web-admin-access.disabled` ou `web-view-access.disabled` correspondente e reinicie; um token novo será criado.
+
+Os arquivos individuais ficam em `<mundo>/generation-control/web-users/` com o nome `<identificador>.<papel>.token`. Os arquivos e a pasta recebem ACL restrita ao usuário que executa o servidor no Windows, ou modo POSIX `0600`/`0700` quando o sistema oferece suporte. Revogar pela página também funciona com o painel ativo e atualiza as sessões imediatamente. As credenciais compartilhadas antigas podem ser renovadas manualmente apagando o token correspondente com o servidor parado e reiniciando; para desativá-las, prefira a página **Acessos**.
+
+Também é possível criar ou revogar uma conta pelo console ou como operador:
+
+```text
+/geracoes web credencial criar nome admin
+/geracoes web credencial criar nome viewer
+/geracoes web credencial revogar nome
+```
+
+O token aparece somente na resposta do comando de criação. O histórico de mudanças por comando continua usando o nome do jogador ou do console.
 
 ## Acesso remoto seguro para máquina dedicada
 
@@ -31,7 +47,7 @@ O painel escuta em `127.0.0.1`. Você pode entrar por um endereço HTTPS privado
    httpsOrigin=https://cobbleverse.exemplo.ts.net
    ```
 
-5. Reinicie o Minecraft. No computador administrador, conectado à mesma tailnet, abra essa URL e informe o token. Leia o arquivo do token por SSH/SFTP ou use o helper PowerShell abaixo.
+5. Reinicie o Minecraft. No computador autorizado, conectado à mesma tailnet, abra essa URL e informe o token de administrador ou consulta. Leia o arquivo escolhido por SSH/SFTP ou use o helper PowerShell abaixo para o token de administrador.
 
 O Serve fornece HTTPS dentro da tailnet. Não ative Tailscale Funnel para este painel. Consulte os requisitos de [HTTPS e acesso à tailnet](https://tailscale.com/docs/features/tailscale-serve) e a [referência atual do comando](https://tailscale.com/docs/reference/tailscale-cli/serve).
 
@@ -75,7 +91,7 @@ Transfira os JARs gerados para a pasta `mods` do servidor dedicado parado; mante
 
 ### Túnel manual
 
-Em qualquer cliente com OpenSSH:
+Em qualquer cliente com OpenSSH. Para o token de consulta, troque o caminho remoto por `web-view-access.token`:
 
 ```sh
 ssh -N -T -o ExitOnForwardFailure=yes \
@@ -94,19 +110,29 @@ port=8765
 httpsOrigin=
 ```
 
-Reinicie o servidor após mudar qualquer opção deste arquivo. Deixe `httpsOrigin` vazio para usar somente o acesso local ou por SSH. Uma alteração de regra feita no navegador é salva como revisão pendente. Use **Validar** e **Salvar**, depois reinicie para aplicá-la. A revisão anterior continua disponível para restauração pelo painel.
+Reinicie o servidor após mudar qualquer opção deste arquivo. Deixe `httpsOrigin` vazio para usar somente o acesso local ou por SSH. Uma alteração feita no navegador é salva como revisão pendente. Use **Validar** e **Salvar**. Depois de salvar, o painel pode aplicar **XP, limites de nível e captura** ao servidor em execução com **Aplicar ao vivo**. Isso inclui o multiplicador global e por jogador/grupo, o modo e comportamento do limite de nível e o multiplicador de captura. O efeito das Poké Bolas é preservado. Se o Cobblemon estiver usando um calculador de captura diferente do padrão, o painel recusa aplicar a captura e não aplica parcialmente as outras opções.
+
+**Gerações, espécies permitidas, ginásios, equipes, datapacks e regras de mundo continuam aguardando o reinício.** O painel mostra essa diferença entre a revisão salva e as regras em execução. Descartar a revisão pendente também restaura XP, limites e captura ao estado salvo ativo. A revisão anterior continua disponível para restauração pelo painel.
 
 Se o painel informar que o jogo está ocupado, aguarde alguns segundos. A consulta do andamento de uma validação tenta novamente automaticamente. Para as demais operações, tente de novo quando o servidor voltar a responder.
 
 ## PC dos jogadores
 
-Abra **PC dos jogadores**, busque por nome ou UUID e selecione **Ver PC**. Use as setas para navegar pelas caixas. A consulta mostra a posição, a espécie, a forma, o nível e a indicação de shiny.
+Abra **PC dos jogadores**, busque por nome ou UUID e percorra os resultados com **Anterior/Próxima**. Selecione **Ver PC** para abrir uma caixa e use as setas para navegar pelas caixas. A consulta mostra posição, espécie, forma, nível e indicação de shiny.
 
-O painel identifica quando a caixa vem da memória do jogo ou do último arquivo salvo. Quando o servidor já não conhece o nome de um jogador offline, a lista mostra seu UUID. O acesso é de leitura para administradores autenticados e suporta os arquivos NBT e JSON do Cobblemon.
+O painel identifica quando a caixa vem da memória do jogo ou do último arquivo salvo. Quando o servidor já não conhece o nome de um jogador offline, a lista mostra seu UUID. O índice temporário cobre até 200 mil arquivos de jogador; exceder esse limite produz um erro explícito, sem retornar uma lista parcial. É possível selecionar um Pokémon para consultar natureza, habilidade, golpes, IVs e EVs. O acesso é somente leitura e suporta os arquivos NBT e JSON do Cobblemon. O token de consulta também pode acessar esta página.
+
+## Atribuição de XP
+
+Na página **XP e níveis**, crie grupos próprios e atribua multiplicadores a eles. Para encontrar um jogador offline pelo nome ou UUID, use **Buscar no mundo**; a tabela de resultados permite selecionar o grupo e configurar o multiplicador individual. A busca é feita somente quando solicitada e reutiliza o índice temporário do PC. Se o jogador ainda não tiver dados salvos no mundo, adicione-o pelo UUID.
+
+## Diagnóstico de desempenho
+
+Em **Diagnóstico**, o painel estima TPS pelo MSPT e registra MSPT, heap, CPU do processo Java (quando a JVM fornece a métrica) e tempo de GC entre amostras. Uma amostra é coletada a cada 15 segundos enquanto a página está aberta; o gráfico mantém até 30 minutos/120 pontos apenas na memória. Fechar a página interrompe as consultas e reiniciar o servidor limpa a série. A estimativa de TPS não substitui a medição do Spark; use-o em uma cópia controlada do pack para perfis de threads e análise detalhada.
 
 ## Boas práticas
 
-- Dê acesso ao arquivo de token apenas a quem administra o servidor.
+- Dê acesso ao token de administrador apenas a quem administra o servidor. Compartilhe o token de consulta apenas com pessoas autorizadas a ver os dados de jogadores.
 - Use uma VPN/segmento privado para chegar ao host SSH e restrinja o SSH no firewall.
 - Não publique tokens, arquivos do mundo ou dados de jogadores em issues.
 - Se o token vazar, pare o servidor, remova o token com o processo desligado e reinicie para gerar outro; confirme a ACL antes de reabrir o túnel.

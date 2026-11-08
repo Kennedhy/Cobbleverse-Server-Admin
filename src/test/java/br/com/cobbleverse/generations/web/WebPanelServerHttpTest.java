@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** HTTP-boundary smoke tests. Minecraft state endpoints are tested in a real server separately. */
 class WebPanelServerHttpTest {
     private static final String TOKEN = "f".repeat(64);
+    private static final String VIEWER_TOKEN = "e".repeat(64);
     private final HttpClient client = HttpClient.newHttpClient();
     private HttpServer http;
     private int port;
@@ -31,9 +32,10 @@ class WebPanelServerHttpTest {
         http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 8);
         port = http.getAddress().getPort();
         Constructor<WebPanelServer> constructor = WebPanelServer.class.getDeclaredConstructor(
-                MinecraftServer.class, int.class, String.class, String.class, Path.class, HttpServer.class);
+                MinecraftServer.class, int.class, String.class, String.class, String.class, Path.class, Path.class, HttpServer.class);
         constructor.setAccessible(true);
-        WebPanelServer panel = constructor.newInstance(null, port, "", TOKEN, Path.of("unused-token"), http);
+        WebPanelServer panel = constructor.newInstance(null, port, "", TOKEN, VIEWER_TOKEN,
+                Path.of("unused-token"), Path.of("unused-view-token"), http);
         Field current = WebPanelServer.class.getDeclaredField("current");
         current.setAccessible(true);
         current.set(null, panel);
@@ -78,6 +80,29 @@ class WebPanelServerHttpTest {
                 .fromJson(logout.body(), com.google.gson.JsonObject.class).get("authenticated").getAsBoolean());
         assertTrue(logout.headers().firstValue("Set-Cookie").orElseThrow().contains("Max-Age=0"));
         assertEquals(401, send("GET", "/api/unknown", null, cookie, null).statusCode());
+    }
+
+    @Test
+    void viewerTokenCannotReachAdministrativeActions() throws Exception {
+        HttpResponse<String> login = send("POST", "/api/session", "{\"token\":\"" + VIEWER_TOKEN + "\"}", null, origin());
+        assertEquals(200, login.statusCode());
+        String cookie = login.headers().firstValue("Set-Cookie").orElseThrow().split(";", 2)[0];
+        assertEquals("viewer", br.com.cobbleverse.generations.config.ConfigStore.GSON
+                .fromJson(login.body(), com.google.gson.JsonObject.class).get("role").getAsString());
+
+        HttpResponse<String> identity = send("GET", "/api/session", null, cookie, null);
+        assertEquals(200, identity.statusCode());
+        assertEquals("viewer", br.com.cobbleverse.generations.config.ConfigStore.GSON
+                .fromJson(identity.body(), com.google.gson.JsonObject.class).get("role").getAsString());
+        assertEquals(403, send("POST", "/api/action", "{\"action\":\"discard\",\"expectedRevision\":1}", cookie, origin()).statusCode());
+    }
+
+    @Test
+    void viewerTokenCannotSaveOrDeleteNamedPresets() throws Exception {
+        HttpResponse<String> login = send("POST", "/api/session", "{\"token\":\"" + VIEWER_TOKEN + "\"}", null, origin());
+        String cookie = login.headers().firstValue("Set-Cookie").orElseThrow().split(";", 2)[0];
+        assertEquals(403, send("POST", "/api/presets", "{\"name\":\"staff\",\"candidate\":{}}", cookie, origin()).statusCode());
+        assertEquals(403, send("DELETE", "/api/presets?id=staff", null, cookie, origin()).statusCode());
     }
 
     @Test

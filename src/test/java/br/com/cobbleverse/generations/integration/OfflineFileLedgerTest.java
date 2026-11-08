@@ -9,19 +9,23 @@ import static org.junit.jupiter.api.Assertions.*;
 class OfflineFileLedgerTest {
     @TempDir Path directory;
     @Test void detectsCreationOfPreviouslyAbsentStoreAndBackup() throws Exception {
+        try (var io=new ValidationIo()) {
         Path primary=directory.resolve("player.dat");
         var ledger=new OfflineFileLedger(); ledger.read(primary,file -> true);
-        ledger.verify().join();
+        ledger.verify(io).join();
         Files.writeString(primary,"new store");
-        assertThrows(CompletionException.class,()->ledger.verify().join());
+        assertThrows(CompletionException.class,()->ledger.verify(io).join());
         var second=new OfflineFileLedger(); second.read(primary,file -> true);
         Files.writeString(Path.of(primary+".old"),"new backup");
-        assertThrows(CompletionException.class,()->second.verify().join());
+        assertThrows(CompletionException.class,()->second.verify(io).join());
+        }
     }
     @Test void detectsReplacementAfterRead() throws Exception {
+        try (var io=new ValidationIo()) {
         Path primary=directory.resolve("player.dat"); Files.writeString(primary,"one");
         var ledger=new OfflineFileLedger(); ledger.read(primary,file -> true);
         Files.writeString(primary,"different content");
-        assertThrows(CompletionException.class,()->ledger.verify().join());
+        assertThrows(CompletionException.class,()->ledger.verify(io).join());
+        }
     }
 }

@@ -120,6 +120,137 @@ class PolicyTest {
         assertEquals(store.editRevision(), reopened.editRevision());
     }
 
+    @Test void revisionHistoryExplainsChangesAndCanStageAnOlderSnapshot() throws Exception {
+        ConfigStore store = new ConfigStore(directory);
+        store.open();
+        GenerationConfig second = store.active();
+        second.selectedGeneration = 2;
+        store.stage(second, store.editRevision(), "moderator");
+        GenerationConfig third = store.pending();
+        third.mode = "cumulative";
+        third.selectedGeneration = 3;
+        third.generations.clear();
+        third.generations.addAll(Set.of(1, 2, 3));
+        store.stage(third, store.editRevision(), "owner");
+
+        var recent = store.recentChanges();
+        assertEquals(List.of(3L, 2L), recent.stream().map(ConfigStore.HistoryEntry::revision).toList());
+        assertEquals("owner", recent.getFirst().author());
+        var detail = store.historyDetail(2);
+        assertTrue(detail.changes().stream().anyMatch(change -> change.field().equals("selectedGeneration")
+                && change.before().equals("1") && change.after().equals("2")));
+        assertFalse(detail.changes().stream().anyMatch(change -> change.field().equals("revision")));
+
+        store.stageRevision(2, store.editRevision(), "owner");
+        assertEquals(2, store.pending().selectedGeneration);
+        assertTrue(store.pending().revision > 3);
+    }
+
+    @Test void asynchronousStageKeepsThePreviousSnapshotUntilTheGameThreadPublishesIt() throws Exception {
+        ConfigStore store = new ConfigStore(directory);
+        store.open();
+        GenerationConfig candidate = store.active();
+        candidate.selectedGeneration = 4;
+        var io = java.util.concurrent.Executors.newSingleThreadExecutor();
+        var serverQueue = new java.util.concurrent.ArrayBlockingQueue<Runnable>(1);
+        try {
+            var save = store.stageAsync(candidate, store.editRevision(), "web-panel", io, serverQueue::add);
+            Runnable publish = serverQueue.poll(5, java.util.concurrent.TimeUnit.SECONDS);
+            assertNotNull(publish, "I/O worker should enqueue a short game-thread publication");
+            assertNull(store.pending(), "Disk completion must not publish before the server task runs");
+            assertEquals(1, store.editRevision());
+            publish.run();
+            assertEquals(4, save.get(1, java.util.concurrent.TimeUnit.SECONDS).selectedGeneration);
+            assertEquals(2, store.pending().revision);
+        } finally {
+            io.shutdownNow();
+        }
+    }
+
+    @Test void namedPresetsAreBoundedWorldScopedAndValidatedOnRead() throws Exception {
+        ConfigStore store = new ConfigStore(directory);
+        store.open();
+        GenerationConfig candidate = store.active();
+        candidate.mode = "cumulative";
+        candidate.selectedGeneration = 3;
+        var saved = store.savePreset("Temporada Johto", candidate);
+        assertEquals("temporada-johto", saved.id());
+        assertEquals("Temporada Johto", saved.name());
+        assertEquals(Set.of(1, 2, 3), store.preset(saved.id()).generations);
+        assertEquals(List.of(saved.id()), store.listPresets().stream().map(ConfigStore.PresetInfo::id).toList());
+
+        candidate.selectedGeneration = 2;
+        store.savePreset("Temporada Johto", candidate);
+        assertEquals(Set.of(1, 2), store.preset(saved.id()).generations);
+        store.deletePreset(saved.id());
+        assertTrue(store.listPresets().isEmpty());
+        assertThrows(IllegalStateException.class, () -> store.preset(saved.id()));
+    }
+
+    @Test void asyncRestoreReadsHistoryOffThreadAndStagesANewRevision() throws Exception {
+        ConfigStore store = new ConfigStore(directory);
+        store.open();
+        GenerationConfig second = store.active();
+        second.selectedGeneration = 2;
+        store.stage(second, store.editRevision(), "admin");
+        store.activatePending("startup");
+
+        var previous = store.stagePreviousAsync(store.editRevision(), "admin", Runnable::run, Runnable::run).join();
+        assertEquals(Set.of(1), previous.generations);
+        assertEquals(3, previous.revision);
+        store.discardPending("admin");
+
+        var historic = store.stageRevisionAsync(2, store.editRevision(), "admin", Runnable::run, Runnable::run).join();
+        assertEquals(Set.of(2), historic.generations);
+        assertTrue(historic.revision > 3);
+    }
+
+    @Test void asyncDiscardPublishesOnlyAfterPersistenceAndRecoversAnInterruptedIntent() throws Exception {
+        ConfigStore store = new ConfigStore(directory);
+        store.open();
+        GenerationConfig candidate = store.active();
+        candidate.selectedGeneration = 2;
+        store.stage(candidate, store.editRevision(), "admin");
+        long revision = store.editRevision();
+        var result = store.discardPendingAsync(revision, "admin", Runnable::run, Runnable::run);
+        assertEquals(revision + 1, result.join());
+        assertNull(store.pending());
+        assertFalse(Files.exists(directory.resolve("discard-transaction.json")));
+
+        store.stage(candidate, store.editRevision(), "admin");
+        long pendingRevision = store.pending().revision;
+        ConfigStore.write(directory.resolve("discard-transaction.json"), Map.of(
+                "pendingRevision", pendingRevision, "nextEditRevision", store.editRevision() + 1,
+                "activeRevision", store.active().revision, "actor", "admin"));
+        ConfigStore recovered = new ConfigStore(directory);
+        recovered.open();
+        assertNull(recovered.pending());
+        assertEquals(pendingRevision + 1, recovered.editRevision());
+        assertFalse(Files.exists(directory.resolve("discard-transaction.json")));
+    }
+
+    @Test void startupRebuildsHistoryAfterACommittedStageWasInterrupted() throws Exception {
+        ConfigStore initial = new ConfigStore(directory);
+        initial.open();
+        GenerationConfig before = initial.active();
+        GenerationConfig after = before.copy();
+        after.selectedGeneration = 2;
+        after.validated();
+        after.revision = 2;
+        String time = java.time.Instant.now().toString();
+        ConfigStore.write(directory.resolve("history/revision-2.json"), after);
+        ConfigStore.write(directory.resolve("pending.json"), after);
+        ConfigStore.write(directory.resolve("stage-transaction.json"), Map.of(
+                "next", after, "expectedRevision", 1, "previousActiveRevision", 1,
+                "previousEditRevision", 1, "before", before, "actor", "web-panel", "time", time));
+
+        ConfigStore recovered = new ConfigStore(directory);
+        recovered.open();
+        assertEquals(2, recovered.pending().revision);
+        assertEquals("web-panel", recovered.historyDetail(2).author());
+        assertFalse(Files.exists(directory.resolve("stage-transaction.json")));
+    }
+
     @Test void revertingMegaIsPermittedAndFormAliasesResolveConsistently() {
         GenerationConfig config=new GenerationConfig();
         GenerationRules rules=new GenerationRules(config);

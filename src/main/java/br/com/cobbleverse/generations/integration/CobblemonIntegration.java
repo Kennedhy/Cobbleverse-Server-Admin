@@ -17,6 +17,11 @@ import java.util.*;
 public final class CobblemonIntegration {
     private CobblemonIntegration() {}
 
+    public static boolean captureMultiplierCompatible() {
+        return com.cobblemon.mod.common.Cobblemon.INSTANCE.getConfig().getCaptureCalculator()
+                instanceof com.cobblemon.mod.common.pokeball.catching.calculators.CobblemonCaptureCalculator;
+    }
+
     public static void register() {
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
             if (entity instanceof PokemonEntity pokemon && pokemon.getPokemon().isWild() && pokemon.getPokemon().getOwnerUUID() == null
@@ -121,8 +126,7 @@ public final class CobblemonIntegration {
     }
 
     private static void inspectRegistryRules(GenerationRules rules,ValidationReport report) {
-        if(rules.config().captureMultiplier!=1.0 && !(com.cobblemon.mod.common.Cobblemon.INSTANCE.getConfig().getCaptureCalculator()
-                instanceof com.cobblemon.mod.common.pokeball.catching.calculators.CobblemonCaptureCalculator))
+        if(rules.config().captureMultiplier!=1.0 && !captureMultiplierCompatible())
             report.errors.add("O multiplicador de captura requer o calculador padrão do Cobblemon.");
         for (Species species : PokemonSpecies.getSpecies())
             if (species.getImplemented() && hasAllowedForm(species,rules)) report.allowedSpecies++;
@@ -159,8 +163,101 @@ public final class CobblemonIntegration {
         return null;
     }
 
+    public static String resolveForm(Species species, String requested) {
+        return matchingForm(species, br.com.cobbleverse.generations.rules.FormNames.canonical(requested));
+    }
+
+    public static List<String> aspectsForForm(Species species, String resolvedName) {
+        var standard = species.getStandardForm();
+        if (standard.getName().equals(resolvedName)) return standard.getAspects();
+        for (var form : species.getForms()) if (form.getName().equals(resolvedName)) return form.getAspects();
+        return List.of();
+    }
+
     public static ValidationReport validate(GenerationConfig candidate) { return validate(candidate,true,true); }
-    public static ValidationReport validateBase(GenerationConfig candidate) { return validate(candidate,false,false); }
+    public static BaseValidation beginBaseValidation(GenerationConfig candidate) { return new BaseValidation(candidate); }
+    public static ValidationReport validateBase(GenerationConfig candidate) {
+        BaseValidation validation=beginBaseValidation(candidate);
+        while(!validation.step(Long.MAX_VALUE)) { /* synchronous caller retained for tooling */ }
+        return validation.report();
+    }
+
+    /** Main-thread registry validation split into cooperative slices for the server panel. */
+    public static final class BaseValidation {
+        private final ValidationReport report=new ValidationReport();
+        private final GenerationRules rules;
+        private final Iterator<Species> species;
+        private int inspectedSpecies;
+        private boolean complete;
+
+        private BaseValidation(GenerationConfig candidate) {
+            GenerationRules parsed;
+            try { parsed=new GenerationRules(candidate); }
+            catch(RuntimeException e) { report.errors.add(e.getMessage()); parsed=null; }
+            rules=parsed;
+            if(rules==null) {
+                species=Collections.emptyIterator();
+                complete=true;
+                return;
+            }
+            if(rules.config().captureMultiplier!=1.0 && !captureMultiplierCompatible())
+                report.errors.add("O multiplicador de captura requer o calculador padrão do Cobblemon.");
+            species=PokemonSpecies.getSpecies().iterator();
+            report.warnings.add("Gerações, ginásios e regras de mundo exigem reinício; XP, limites e captura podem ser aplicados separadamente após salvar.");
+            report.warnings.add("Ginásios em áreas já geradas permanecem no terreno.");
+            if(GenerationControl.ready() && GenerationControl.store().startupWarning()!=null)
+                report.warnings.add("Última rejeição de inicialização: "+GenerationControl.store().startupWarning());
+            Compatibility.inspect(report);
+            var server=GenerationControl.server();
+            if(server!=null && rules.filterGyms()) for(String region:rules.config().regions) {
+                if(!region.equals("kanto") && server.getDataPackManager().getIds().stream().noneMatch(name -> name.toLowerCase(Locale.ROOT).contains(region)))
+                    report.errors.add("Datapack de "+region+" não encontrado no servidor.");
+            }
+            GenerationConfig active=GenerationControl.ready() ? GenerationControl.rules().config() : null;
+            boolean sameSpeciesPolicy=active!=null && new GenerationRules(active).sameSpeciesPolicy(rules);
+            if(!needsTeamPreview(candidate))
+                report.warnings.add("Equipes já validadas para as regras de espécies ativas; a configuração de XP não exige nova adaptação.");
+            if(sameSpeciesPolicy && active.restrictExistingPokemon==rules.config().restrictExistingPokemon)
+                report.warnings.add("Sem nova varredura de jogadores: as restrições aos Pokémon capturados não foram alteradas.");
+            if(!rules.filterGyms()) report.warnings.add("Filtro de ginásios desligado: outros circuitos continuam disponíveis.");
+            if(!rules.restrictExisting()) report.warnings.add("Pokémon capturados fora da seleção continuam utilizáveis. Novos encontros continuam filtrados.");
+            if(rules.regionAllowed("hoenn") || rules.regionAllowed("sinnoh"))
+                report.warnings.add("Hoenn/Sinnoh habilitam Terralith. O terreno novo pode diferir das áreas já geradas; não há regeneração de chunks.");
+            report.warnings.add("Dynamax, Gigantamax, terastalização e golpes Z seguem as regras do pack. A opção de megas controla megavoluções e formas primais.");
+        }
+
+        public ValidationReport report() { return report; }
+        public GenerationRules rules() { return rules; }
+        public int inspectedSpecies() { return inspectedSpecies; }
+        public boolean canContinue() { return rules!=null && report.errors.isEmpty(); }
+        public boolean step(long deadline) {
+            if(complete) return true;
+            while(species.hasNext() && System.nanoTime()<deadline) {
+                Species entry=species.next();
+                if(entry.getImplemented() && hasAllowedForm(entry,rules)) report.allowedSpecies++;
+                inspectedSpecies++;
+            }
+            if(species.hasNext()) return false;
+            finishRegistryInspection(rules,report);
+            complete=true;
+            return true;
+        }
+    }
+
+    private static void finishRegistryInspection(GenerationRules rules,ValidationReport report) {
+        if(report.allowedSpecies==0) report.errors.add("Nenhuma espécie ou forma implementada disponível com esta seleção.");
+        for(String exception:rules.config().allowSpecies) {
+            var entry=species(exception);
+            if(entry==null || !entry.getImplemented()) report.errors.add("Espécie desconhecida ou não implementada: "+exception);
+        }
+        for(String exception:rules.config().denySpecies) if(species(exception)==null)
+            report.warnings.add("Bloqueio de espécie não carregada: "+exception);
+        Set<String> forms=new TreeSet<>(rules.config().allowForms); forms.addAll(rules.config().denyForms);
+        for(String exception:forms) {
+            int split=exception.indexOf('/'); var entry=species(exception.substring(0,split)); String form=exception.substring(split+1);
+            if(entry==null || !hasForm(entry,form)) report.errors.add("Forma desconhecida: "+exception);
+        }
+    }
     public static boolean needsPlayerImpact(GenerationConfig candidate) {
         if(!GenerationControl.ready()) return true;
         var active=GenerationControl.rules().config();

@@ -1,40 +1,52 @@
 package br.com.cobbleverse.generations.integration;
 
-import com.cobblemon.mod.common.api.storage.PokemonStore;
 import com.cobblemon.mod.common.api.reactive.ObservableSubscription;
-import com.cobblemon.mod.common.pokemon.Pokemon;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
+import com.cobblemon.mod.common.api.storage.PokemonStore;
+import java.util.UUID;
 
-/** Tracks only the fields that can affect the generation preview. */
+/** Constant-space change fence for a loaded store during one explicit preview. */
 final class CacheWatch {
-    private record Signature(UUID id,String species,int number,String form,Set<String> aspects) {}
-    private final PokemonStore<?> store;
-    private final Map<Signature,Integer> expected=new HashMap<>();
-    private final AtomicLong changes=new AtomicLong();
-    private final ObservableSubscription<?> subscription;
-    private long checked,readingVersion; private Iterator<Pokemon> iterator; private Map<Signature,Integer> actual;
-    CacheWatch(PokemonStore<?> store) {
-        this.store=store;
-        subscription=store.getAnyChangeObservable().subscribe((java.util.function.Consumer<kotlin.Unit>)event -> changes.incrementAndGet());
+    static final class StoreKey {
+        private final PokemonStore<?> store;
+        StoreKey(PokemonStore<?> store) { this.store = store; }
+        @Override public boolean equals(Object other) { return other instanceof StoreKey key && key.store == store; }
+        @Override public int hashCode() { return System.identityHashCode(store); }
     }
-    void observed(Pokemon pokemon) { expected.merge(signature(pokemon),1,Integer::sum); }
-    boolean dirty() { return changes.get()!=checked; }
-    boolean step() {
-        if(iterator==null) {
-            readingVersion=changes.get(); actual=new HashMap<>(); iterator=store.iterator();
+    record StoreTarget(PokemonStore<?> store, boolean available) {
+        StoreKey key() { return new StoreKey(store); }
+    }
+
+    static final class ChangeEpoch {
+        private long changes;
+
+        synchronized void changed(CacheWatch watch) {
+            if (watch.changed) return;
+            watch.changed = true;
+            changes++;
         }
-        int budget=12; long end=System.nanoTime()+3_000_000L;
-        while(iterator.hasNext() && budget-->0 && System.nanoTime()<end) actual.merge(signature(iterator.next()),1,Integer::sum);
-        if(iterator.hasNext()) return false;
-        iterator=null;
-        if(readingVersion!=changes.get()) return false;
-        if(!expected.equals(actual)) throw new IllegalStateException("Espécies, formas ou composição do armazenamento mudaram durante a análise; valide novamente.");
-        checked=readingVersion; return true;
+
+        synchronized long value() { return changes; }
     }
+
+    private volatile boolean changed;
+    private final UUID player;
+    private final PokemonStore<?> store;
+    private final boolean available;
+    private final ObservableSubscription<?> subscription;
+
+    CacheWatch(UUID player, PokemonStore<?> store, boolean available, ChangeEpoch epoch) {
+        this.player = player;
+        this.store = store;
+        this.available = available;
+        subscription = store.getAnyChangeObservable().subscribe(
+                (java.util.function.Consumer<kotlin.Unit>) event -> epoch.changed(this));
+    }
+
+    UUID player() { return player; }
+    PokemonStore<?> store() { return store; }
+    boolean available() { return available; }
+    StoreKey key() { return new StoreKey(store); }
+    boolean dirty() { return changed; }
+
     void close() { subscription.unsubscribe(); }
-    private static Signature signature(Pokemon pokemon) {
-        var species=pokemon.getSpecies();
-        return new Signature(pokemon.getUuid(),species.getResourceIdentifier().toString(),species.getNationalPokedexNumber(),pokemon.getForm().getName(),Set.copyOf(pokemon.getAspects()));
-    }
 }

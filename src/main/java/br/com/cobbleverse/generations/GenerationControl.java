@@ -2,6 +2,7 @@ package br.com.cobbleverse.generations;
 
 import br.com.cobbleverse.generations.config.*;
 import br.com.cobbleverse.generations.rules.GenerationRules;
+import br.com.cobbleverse.generations.rules.GameplaySettings;
 import br.com.cobbleverse.generations.integration.CobblemonIntegration;
 import br.com.cobbleverse.generations.integration.RctIntegration;
 import br.com.cobbleverse.generations.web.WebPanelServer;
@@ -22,6 +23,8 @@ public final class GenerationControl implements DedicatedServerModInitializer {
     public static final Logger LOGGER = LoggerFactory.getLogger(ID);
     private static volatile ConfigStore store;
     private static volatile GenerationRules rules;
+    private static volatile GameplaySettings gameplaySettings;
+    private static volatile long gameplaySettingsRevision;
     private static volatile Path currentWorld;
     private static volatile net.minecraft.server.MinecraftServer server;
 
@@ -73,9 +76,49 @@ public final class GenerationControl implements DedicatedServerModInitializer {
                 .then(CommandManager.literal("status").executes(ctx -> {
                     ctx.getSource().sendFeedback(() -> Text.literal(status()), false); return 1;
                 }))
-                .then(CommandManager.literal("web").requires(br.com.cobbleverse.generations.net.AdminPermissions::canEdit).executes(ctx -> {
-                    ctx.getSource().sendFeedback(() -> Text.literal(WebPanelServer.connectionInfo()), false); return 1;
-                }))
+                .then(CommandManager.literal("web").requires(br.com.cobbleverse.generations.net.AdminPermissions::canEdit)
+                    .executes(ctx -> {
+                        ctx.getSource().sendFeedback(() -> Text.literal(WebPanelServer.connectionInfo()), false); return 1;
+                    })
+                    .then(CommandManager.literal("credencial")
+                        .then(CommandManager.literal("criar")
+                            .then(CommandManager.argument("nome", com.mojang.brigadier.arguments.StringArgumentType.word())
+                                .then(CommandManager.argument("papel", com.mojang.brigadier.arguments.StringArgumentType.word())
+                                    .suggests((ctx, builder) -> CommandSource.suggestMatching(java.util.List.of("admin", "viewer"), builder))
+                                    .executes(ctx -> {
+                                        var source = ctx.getSource();
+                                        String name = com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "nome");
+                                        String role = com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "papel");
+                                        try {
+                                            var created = WebPanelServer.createCredential(name, role);
+                                            source.sendFeedback(() -> Text.literal("Credencial " + created.name() + " (" + created.role()
+                                                    + ") criada. Guarde este token, ele não será mostrado novamente: " + created.token()), false);
+                                            return 1;
+                                        } catch (IllegalArgumentException | IllegalStateException failure) {
+                                            source.sendError(Text.literal(failure.getMessage())); return 0;
+                                        } catch (IOException failure) {
+                                            source.sendError(Text.literal("Não foi possível gravar a credencial individual.")); return 0;
+                                        }
+                                    }))))
+                        .then(CommandManager.literal("revogar")
+                            .then(CommandManager.argument("nome", com.mojang.brigadier.arguments.StringArgumentType.word())
+                                .executes(ctx -> {
+                                    var source = ctx.getSource();
+                                    String name = com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "nome");
+                                    try {
+                                        if (!WebPanelServer.revokeCredential(name)) {
+                                            source.sendError(Text.literal("Credencial individual não encontrada.")); return 0;
+                                        }
+                                        source.sendFeedback(() -> Text.literal("Credencial " + name + " revogada; as sessões foram encerradas."), false);
+                                        return 1;
+                                    } catch (IllegalArgumentException failure) {
+                                        source.sendError(Text.literal(failure.getMessage())); return 0;
+                                    } catch (IllegalStateException failure) {
+                                        source.sendError(Text.literal(failure.getMessage())); return 0;
+                                    } catch (IOException failure) {
+                                        source.sendError(Text.literal("Não foi possível revogar a credencial individual.")); return 0;
+                                    }
+                                })))))
                 .then(CommandManager.literal("validar").requires(br.com.cobbleverse.generations.net.AdminPermissions::canEdit).executes(ctx -> {
                     var candidate = store().pending() == null ? store().active() : store().pending();
                     var source=ctx.getSource(); long revision=store().editRevision();
@@ -97,24 +140,46 @@ public final class GenerationControl implements DedicatedServerModInitializer {
                             if (!br.com.cobbleverse.generations.net.AdminPermissions.canEdit(source) || !validCommandSource(source)) return;
                             if(revision!=store().editRevision()) { source.sendError(Text.literal("Configuração alterada durante a prévia; valide novamente.")); return; }
                             if(!report.errors.isEmpty()) { source.sendError(Text.literal(String.join("; ",report.errors))); return; }
-                            try { store().stage(candidate,revision,source.getName()); }
-                            catch(Exception e) { source.sendError(Text.literal(e.getMessage())); return; }
-                            source.sendFeedback(() -> Text.literal("Perfil salvo como pendente. Reinicie o servidor para aplicar."),true);
+                            try {
+                                store().stageAsync(candidate, revision, source.getName(), ConfigPersistenceExecutor.executor(), source.getServer()::execute)
+                                        .whenComplete((staged, failure) -> {
+                                            try { source.getServer().execute(() -> {
+                                                if (!br.com.cobbleverse.generations.net.AdminPermissions.canEdit(source) || !validCommandSource(source)) return;
+                                                if (failure != null) {
+                                                    Throwable cause = failure instanceof java.util.concurrent.CompletionException && failure.getCause() != null ? failure.getCause() : failure;
+                                                    source.sendError(Text.literal(cause.getMessage()==null ? "Não foi possível salvar o perfil." : cause.getMessage()));
+                                                    return;
+                                                }
+                                                source.sendFeedback(() -> Text.literal("Perfil salvo como pendente. Reinicie o servidor para aplicar."),true);
+                                            }); } catch (RuntimeException ignored) { }
+                                        });
+                            } catch (RuntimeException failure) { source.sendError(Text.literal(failure.getMessage()==null ? "Não foi possível iniciar o salvamento." : failure.getMessage())); }
                         });
                         if(!started) { source.sendError(Text.literal("Já existe uma validação em andamento.")); return 0; }
                         source.sendFeedback(() -> Text.literal("Validação iniciada; aguarde o resultado."),false); return 1;
                     })))
                 .then(CommandManager.literal("restaurar").requires(br.com.cobbleverse.generations.net.AdminPermissions::canEdit).executes(ctx -> {
-                    try { store().stagePrevious(store().editRevision(), ctx.getSource().getName()); }
-                    catch (Exception e) { ctx.getSource().sendError(Text.literal(e.getMessage())); return 0; }
-                    ctx.getSource().sendFeedback(() -> Text.literal("Revisão anterior preparada para o próximo reinício."), true); return 1;
+                    var source=ctx.getSource(); long revision=store().editRevision();
+                    try {
+                        store().stagePreviousAsync(revision, source.getName(), ConfigPersistenceExecutor.executor(), source.getServer()::execute)
+                                .whenComplete((staged, failure) -> {
+                                    try { source.getServer().execute(() -> {
+                                        if (!br.com.cobbleverse.generations.net.AdminPermissions.canEdit(source) || !validCommandSource(source)) return;
+                                        if (failure != null) {
+                                            Throwable cause = failure instanceof java.util.concurrent.CompletionException && failure.getCause() != null ? failure.getCause() : failure;
+                                            source.sendError(Text.literal(cause.getMessage()==null ? "Não foi possível restaurar a revisão." : cause.getMessage()));
+                                        } else source.sendFeedback(() -> Text.literal("Revisão anterior preparada para o próximo reinício."), true);
+                                    }); } catch (RuntimeException ignored) { }
+                                });
+                    } catch (RuntimeException failure) { source.sendError(Text.literal(failure.getMessage()==null ? "Não foi possível iniciar a restauração." : failure.getMessage())); return 0; }
+                    source.sendFeedback(() -> Text.literal("Preparando a revisão anterior em segundo plano…"), false); return 1;
                 }))
         ));
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
             WebPanelServer.stop();
-            synchronized (GenerationControl.class) { store = null; rules = null; currentWorld = null; GenerationControl.server=null; }
+            ConfigPersistenceExecutor.stop();
+            synchronized (GenerationControl.class) { store = null; rules = null; gameplaySettings = null; gameplaySettingsRevision = 0; currentWorld = null; GenerationControl.server=null; }
             br.com.cobbleverse.generations.integration.ValidationService.clear();
-            br.com.cobbleverse.generations.integration.ExperienceManager.clear();
             br.com.cobbleverse.generations.integration.CaptureManager.clear();
         });
         LOGGER.info("Generation Control inicializado. As regras são controladas pelo servidor.");
@@ -145,6 +210,8 @@ public final class GenerationControl implements DedicatedServerModInitializer {
             store = next;
             var boot = next.pending() == null ? next.active() : next.pending();
             rules = new GenerationRules(boot);
+            gameplaySettings = GameplaySettings.from(boot);
+            gameplaySettingsRevision = boot.revision;
             if (next.pending() != null) ConfigStore.write(attempt, boot.revision);
             currentWorld = resolved;
             LOGGER.info("Mundo {}: preparando revisão {}, gerações {}", resolved.getFileName(), boot.revision, boot.generations);
@@ -162,6 +229,8 @@ public final class GenerationControl implements DedicatedServerModInitializer {
             store.recordStartupWarning("Revisão "+revision+" rejeitada durante a preparação: "+failure.getMessage()+". A ativa foi preservada. Reinicie para carregar novamente os datapacks correspondentes.");
             java.nio.file.Files.deleteIfExists(store.directory().resolve("startup-attempt.json"));
             rules = new GenerationRules(store.active());
+            gameplaySettings = GameplaySettings.from(store.active());
+            gameplaySettingsRevision = store.active().revision;
             LOGGER.error("Revisão {} rejeitada; mantendo revisão {}.", revision, store.active().revision, failure);
             return true;
         } catch (IOException e) { throw new IllegalStateException("Falha ao restaurar configuração ativa.",e); }
@@ -170,6 +239,30 @@ public final class GenerationControl implements DedicatedServerModInitializer {
     public static boolean ready() { return rules != null; }
     public static net.minecraft.server.MinecraftServer server() { return server; }
     public static GenerationRules rules() { return rules; }
+    public static GameplaySettings gameplaySettings() { return gameplaySettings; }
+    public static long gameplaySettingsRevision() { return gameplaySettingsRevision; }
+
+    /** Apply only XP, level-cap and capture settings from the already-saved pending revision. */
+    public static synchronized void applyPendingGameplaySettings(long expectedEditRevision) {
+        ConfigStore current = store();
+        if (current.editRevision() != expectedEditRevision)
+            throw new IllegalStateException("A configuração mudou em outra sessão. Atualize o painel antes de aplicar ao vivo.");
+        GenerationConfig pending = current.pending();
+        if (pending == null) throw new IllegalStateException("Não há revisão pendente para aplicar ao vivo.");
+        pending.validated();
+        if (pending.captureMultiplier != 1.0 && !CobblemonIntegration.captureMultiplierCompatible())
+            throw new IllegalStateException("O multiplicador de captura exige o calculador padrão do Cobblemon; nenhum ajuste foi aplicado.");
+        gameplaySettings = GameplaySettings.from(pending);
+        gameplaySettingsRevision = pending.revision;
+    }
+
+    /** Revert selective runtime settings when the pending revision is discarded. */
+    public static synchronized void resetGameplaySettingsToActive() {
+        GenerationConfig active = store().active();
+        gameplaySettings = GameplaySettings.from(active);
+        gameplaySettingsRevision = active.revision;
+    }
+
     public static ConfigStore store() {
         ConfigStore current = store;
         if (current == null) throw new IllegalStateException("Nenhum mundo de servidor carregado.");

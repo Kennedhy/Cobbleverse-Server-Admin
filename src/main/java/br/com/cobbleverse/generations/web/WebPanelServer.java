@@ -31,6 +31,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -46,14 +47,21 @@ public final class WebPanelServer {
     private final int port;
     private final String httpsOrigin;
     private final String httpsAuthority;
-    private final String adminToken;
     private final Path tokenFile;
+    private final Path viewerTokenFile;
+    private final Path credentialDirectory;
+    private volatile List<Credential> sharedCredentials;
+    private volatile List<Credential> credentials;
     private final HttpServer http;
     private final ThreadPoolExecutor executor;
+    private final Executor persistenceExecutor;
     private final WebPanelService service;
     private final PanelGameRequests gameRequests = new PanelGameRequests(2, Duration.ofSeconds(3));
     private final Semaphore pcReads = new Semaphore(1);
-    private final Map<String, Long> sessions = new ConcurrentHashMap<>();
+    private record Credential(String name, String role, String token, boolean shared) {}
+    private record Session(String role, String actor, long expiresAt) {}
+    public record CreatedCredential(String name, String role, String token) {}
+    private final Map<String, Session> sessions = new ConcurrentHashMap<>();
     private final Map<String, Long> lastAction = new ConcurrentHashMap<>();
     // All connections come from loopback, including connections from the proxy.
     private final LoginWindow loginAttempts = new LoginWindow();
@@ -64,12 +72,31 @@ public final class WebPanelServer {
     }
 
     private WebPanelServer(MinecraftServer minecraft, int port, String httpsOrigin, String adminToken, Path tokenFile, HttpServer http) {
+        this(minecraft, port, httpsOrigin, adminToken, adminToken, tokenFile,
+                tokenFile.resolveSibling("web-view-access.token"), http);
+    }
+
+    private WebPanelServer(MinecraftServer minecraft, int port, String httpsOrigin, String adminToken,
+                           String viewerToken, Path tokenFile, Path viewerTokenFile, HttpServer http) {
+        this(minecraft, port, httpsOrigin, adminToken, viewerToken, tokenFile, viewerTokenFile,
+                tokenFile.resolveSibling("web-users"), List.of(), http);
+    }
+
+    private WebPanelServer(MinecraftServer minecraft, int port, String httpsOrigin, String adminToken,
+                           String viewerToken, Path tokenFile, Path viewerTokenFile, Path credentialDirectory,
+                           List<Credential> namedCredentials, HttpServer http) {
         this.minecraft = minecraft;
         this.port = port;
         this.httpsOrigin = httpsOrigin;
         this.httpsAuthority = httpsOrigin.isEmpty() ? "" : httpsOrigin.substring("https://".length());
-        this.adminToken = adminToken;
         this.tokenFile = tokenFile;
+        this.viewerTokenFile = viewerTokenFile;
+        this.credentialDirectory = credentialDirectory.toAbsolutePath().normalize();
+        ArrayList<Credential> shared = new ArrayList<>(2);
+        if (adminToken != null) shared.add(new Credential("admin-compartilhado", "admin", adminToken, true));
+        if (viewerToken != null) shared.add(new Credential("consulta-compartilhada", "viewer", viewerToken, true));
+        this.sharedCredentials = List.copyOf(shared);
+        this.credentials = credentialsWith(namedCredentials);
         this.http = http;
         this.service = new WebPanelService(minecraft);
         this.executor = new ThreadPoolExecutor(1, 2, 30, TimeUnit.SECONDS, new ArrayBlockingQueue<>(16), task -> {
@@ -78,6 +105,7 @@ public final class WebPanelServer {
             return thread;
         }, new ThreadPoolExecutor.CallerRunsPolicy());
         this.executor.allowCoreThreadTimeOut(true);
+        this.persistenceExecutor = br.com.cobbleverse.generations.config.ConfigPersistenceExecutor.executor();
         http.setExecutor(executor);
         http.createContext("/", this::handle);
     }
@@ -87,6 +115,7 @@ public final class WebPanelServer {
         Path directory = GenerationControl.store().directory();
         Path settings = directory.resolve("web.properties");
         Path token = directory.resolve("web-access.token");
+        Path viewerToken = directory.resolve("web-view-access.token");
         try {
             Properties properties = loadSettings(settings);
             if (!Boolean.parseBoolean(properties.getProperty("enabled", "true"))) {
@@ -96,12 +125,18 @@ public final class WebPanelServer {
             int port = Integer.parseInt(properties.getProperty("port", "8765").trim());
             if (port < 1024 || port > 65535) throw new IOException("A porta do painel deve ficar entre 1024 e 65535.");
             String httpsOrigin = readHttpsOrigin(properties);
-            String secret = loadOrCreateToken(token);
+            String secret = Files.exists(directory.resolve("web-admin-access.disabled")) ? null : loadOrCreateToken(token);
+            String viewSecret = Files.exists(directory.resolve("web-view-access.disabled")) ? null : loadOrCreateToken(viewerToken);
+            Path users = directory.resolve("web-users");
+            List<Credential> namedCredentials = loadNamedCredentials(users);
             HttpServer http = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 8);
-            WebPanelServer panel = new WebPanelServer(server, port, httpsOrigin, secret, token, http);
+            WebPanelServer panel = new WebPanelServer(server, port, httpsOrigin, secret, viewSecret,
+                    token, viewerToken, users, namedCredentials, http);
             http.start();
             current = panel;
-            GenerationControl.LOGGER.info("Painel web local: http://127.0.0.1:{} — token salvo em {}", port, token);
+            GenerationControl.LOGGER.info("Painel web local: http://127.0.0.1:{}", port);
+            if (secret != null) GenerationControl.LOGGER.info("Token admin compartilhado salvo em {}", token);
+            if (viewSecret != null) GenerationControl.LOGGER.info("Token de consulta compartilhado salvo em {}", viewerToken);
             if (!httpsOrigin.isEmpty()) GenerationControl.LOGGER.info("Endereço HTTPS configurado para o painel: {}", httpsOrigin);
         } catch (Exception failure) {
             GenerationControl.LOGGER.error("O servidor do jogo iniciou, mas o painel web não pôde abrir. Consulte {}.", settings, failure);
@@ -111,6 +146,7 @@ public final class WebPanelServer {
     public static synchronized void stop() {
         WebPanelServer panel = current;
         current = null;
+        ServerMetrics.clear();
         if (panel == null) return;
         panel.sessions.clear();
         panel.lastAction.clear();
@@ -122,7 +158,183 @@ public final class WebPanelServer {
         WebPanelServer panel = current;
         if (panel == null) return "O painel web não está ativo. Confira o log do servidor e o arquivo web.properties.";
         String remote = panel.httpsOrigin.isEmpty() ? "" : " | HTTPS: " + panel.httpsOrigin;
-        return "Painel web: http://127.0.0.1:" + panel.port + remote + " | token em: " + panel.tokenFile;
+        String admin = panel.sharedCredentials.stream().anyMatch(credential -> credential.role().equals("admin"))
+                ? "token admin compartilhado em: " + panel.tokenFile : "admin compartilhado desativado";
+        String viewer = panel.sharedCredentials.stream().anyMatch(credential -> credential.role().equals("viewer"))
+                ? "token de consulta compartilhado em: " + panel.viewerTokenFile : "consulta compartilhada desativada";
+        return "Painel web: http://127.0.0.1:" + panel.port + remote + " | " + admin + " | " + viewer;
+    }
+
+    /** Create a named credential and return its secret once to the authorized caller. */
+    public static synchronized CreatedCredential createCredential(String rawName, String rawRole) throws IOException {
+        String name = normalizeCredentialName(rawName);
+        String role = normalizeCredentialRole(rawRole);
+        if (name.equals("admin-compartilhado") || name.equals("consulta-compartilhada"))
+            throw new IllegalArgumentException("Esse nome é reservado para a credencial compartilhada.");
+        Path directory = GenerationControl.store().directory().resolve("web-users").toAbsolutePath().normalize();
+        Path adminFile = credentialFile(directory, name, "admin");
+        Path viewerFile = credentialFile(directory, name, "viewer");
+        if (Files.exists(directory.resolve(name + ".revoked")))
+            throw new IllegalStateException("Esse identificador já foi revogado e não pode ser reutilizado.");
+        if (Files.exists(adminFile) || Files.exists(viewerFile))
+            throw new IllegalStateException("Já existe uma credencial com esse nome.");
+        if (loadNamedCredentials(directory).size() >= 64)
+            throw new IllegalStateException("O limite de 64 credenciais individuais foi atingido.");
+
+        Files.createDirectories(directory);
+        secureTokenDirectory(directory);
+        Path file = role.equals("admin") ? adminFile : viewerFile;
+        String token = generateToken();
+        try {
+            Files.createFile(file);
+            secureTokenFile(file);
+            Files.writeString(file, token + System.lineSeparator(), StandardCharsets.UTF_8,
+                    StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IOException failure) {
+            Files.deleteIfExists(file);
+            throw failure;
+        }
+
+        WebPanelServer panel = current;
+        if (panel != null && panel.credentialDirectory.equals(directory))
+            panel.addNamedCredential(new Credential(name, role, token, false));
+        return new CreatedCredential(name, role, token);
+    }
+
+    /** Revoke a named credential and immediately expire every session created with it. */
+    public static synchronized boolean revokeCredential(String rawName) throws IOException {
+        String name = normalizeCredentialName(rawName);
+        Path directory = GenerationControl.store().directory().resolve("web-users").toAbsolutePath().normalize();
+        if (name.equals("admin-compartilhado") || name.equals("consulta-compartilhada")) {
+            Path root = GenerationControl.store().directory();
+            boolean admin = name.equals("admin-compartilhado");
+            Path token = root.resolve(admin ? "web-access.token" : "web-view-access.token");
+            Path disabled = root.resolve(admin ? "web-admin-access.disabled" : "web-view-access.disabled");
+            if (Files.exists(disabled)) return false;
+            if (admin) {
+                boolean individualAdmin = loadNamedCredentials(directory).stream().anyMatch(credential -> credential.role().equals("admin"));
+                if (!individualAdmin) throw new IllegalStateException("Crie uma credencial admin individual antes de revogar o último acesso administrativo.");
+            }
+            Files.writeString(disabled, "disabled" + System.lineSeparator(), StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            Files.deleteIfExists(token);
+            WebPanelServer panel = current;
+            if (panel != null && panel.credentialDirectory.equals(directory)) panel.disableSharedCredential(name);
+            return true;
+        }
+        Path adminFile = credentialFile(directory, name, "admin");
+        Path viewerFile = credentialFile(directory, name, "viewer");
+        boolean removed = Files.exists(adminFile) || Files.exists(viewerFile);
+        if (!removed) return false;
+        if (Files.exists(adminFile)) {
+            Path root = GenerationControl.store().directory();
+            long otherAdmins = loadNamedCredentials(directory).stream()
+                    .filter(credential -> credential.role().equals("admin") && !credential.name().equals(name)).count();
+            boolean sharedAdminAvailable = !Files.exists(root.resolve("web-admin-access.disabled"))
+                    && Files.isRegularFile(root.resolve("web-access.token"));
+            if (otherAdmins == 0 && !sharedAdminAvailable)
+                throw new IllegalStateException("Crie outro administrador antes de revogar o último acesso administrativo.");
+        }
+        Files.createDirectories(directory);
+        secureTokenDirectory(directory);
+        Files.writeString(directory.resolve(name + ".revoked"), "revoked" + System.lineSeparator(), StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+        Files.deleteIfExists(adminFile);
+        Files.deleteIfExists(viewerFile);
+
+        WebPanelServer panel = current;
+        if (panel != null && panel.credentialDirectory.equals(directory)) panel.revokeNamedCredential(name);
+        return true;
+    }
+
+    private synchronized void addNamedCredential(Credential credential) {
+        ArrayList<Credential> updated = new ArrayList<>(credentials);
+        updated.add(credential);
+        credentials = List.copyOf(updated);
+    }
+
+    private synchronized void revokeNamedCredential(String name) {
+        credentials = credentials.stream()
+                .filter(credential -> credential.shared() || !credential.name().equals(name)).toList();
+        invalidateActor(name);
+    }
+
+    private synchronized void disableSharedCredential(String name) {
+        sharedCredentials = sharedCredentials.stream().filter(credential -> !credential.name().equals(name)).toList();
+        credentials = credentials.stream().filter(credential -> !credential.name().equals(name)).toList();
+        invalidateActor(name);
+    }
+
+    private List<Credential> credentialsWith(List<Credential> named) {
+        ArrayList<Credential> all = new ArrayList<>(sharedCredentials.size() + named.size());
+        all.addAll(sharedCredentials);
+        all.addAll(named);
+        return List.copyOf(all);
+    }
+
+    private List<Map<String, Object>> credentialViews() {
+        return credentials.stream().map(credential -> Map.<String, Object>of(
+                "name", credential.name(), "role", credential.role(), "shared", credential.shared())).toList();
+    }
+
+    private void invalidateActor(String name) {
+        for (var entry : sessions.entrySet()) {
+            if (entry.getValue().actor().equals(name) && sessions.remove(entry.getKey(), entry.getValue())) {
+                lastAction.remove(entry.getKey());
+                service.closeSession(entry.getKey());
+            }
+        }
+    }
+
+    private static List<Credential> loadNamedCredentials(Path directory) throws IOException {
+        if (!Files.isDirectory(directory)) return List.of();
+        ArrayList<Credential> result = new ArrayList<>();
+        try (var files = Files.list(directory)) {
+            for (Path file : files.sorted().toList()) {
+                if (!Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS)) continue;
+                String filename = file.getFileName().toString();
+                String role;
+                String suffix;
+                if (filename.endsWith(".admin.token")) { role = "admin"; suffix = ".admin.token"; }
+                else if (filename.endsWith(".viewer.token")) { role = "viewer"; suffix = ".viewer.token"; }
+                else continue;
+                String name = filename.substring(0, filename.length() - suffix.length());
+                if (!name.matches("[a-z0-9_-]{1,24}")) continue;
+                if (result.size() >= 64) throw new IOException("O diretório contém mais de 64 credenciais individuais.");
+                secureTokenFile(file);
+                if (Files.size(file) > 256) throw new IOException("Uma credencial individual excede o tamanho permitido: " + filename);
+                String token = Files.readString(file, StandardCharsets.UTF_8).trim();
+                if (!token.matches("(?i)[0-9a-f]{64}"))
+                    throw new IOException("Credencial individual ausente ou inválida: " + filename);
+                result.add(new Credential(name, role, token, false));
+            }
+        }
+        result.sort(Comparator.comparing(Credential::name).thenComparing(Credential::role));
+        return List.copyOf(result);
+    }
+
+    private static Path credentialFile(Path directory, String name, String role) {
+        return directory.resolve(name + "." + role + ".token").normalize();
+    }
+
+    private static String normalizeCredentialName(String rawName) {
+        String name = rawName == null ? "" : rawName.trim().toLowerCase(Locale.ROOT);
+        if (!name.matches("[a-z0-9][a-z0-9_-]{0,23}"))
+            throw new IllegalArgumentException("Use um nome de 1 a 24 caracteres: letras sem acento, números, hífen ou sublinhado.");
+        return name;
+    }
+
+    private static String normalizeCredentialRole(String rawRole) {
+        String role = rawRole == null ? "" : rawRole.trim().toLowerCase(Locale.ROOT);
+        if (!role.equals("admin") && !role.equals("viewer"))
+            throw new IllegalArgumentException("O papel deve ser admin ou viewer.");
+        return role;
+    }
+
+    private static String generateToken() {
+        byte[] bytes = new byte[32];
+        SECURE_RANDOM.nextBytes(bytes);
+        return HexFormat.of().formatHex(bytes);
     }
 
     private static Properties loadSettings(Path file) throws IOException {
@@ -167,9 +379,7 @@ public final class WebPanelServer {
             if (!value.matches("(?i)[0-9a-f]{64}")) throw new IOException("Token ausente ou inválido; apague o arquivo para gerar outro: " + file);
             return value;
         }
-        byte[] bytes = new byte[32];
-        SECURE_RANDOM.nextBytes(bytes);
-        String value = HexFormat.of().formatHex(bytes);
+        String value = generateToken();
         Files.createDirectories(file.getParent());
         Files.createFile(file);
         secureTokenFile(file);
@@ -205,6 +415,39 @@ public final class WebPanelServer {
             GenerationControl.LOGGER.warn("O sistema de arquivos não oferece ACL/POSIX para restringir o token do painel: {}", file);
         } catch (IOException | SecurityException | UnsupportedOperationException failure) {
             GenerationControl.LOGGER.warn("Não foi possível restringir as permissões do token do painel em {}. Proteja o arquivo pelas permissões do sistema operacional.", file, failure);
+        }
+    }
+
+    private static void secureTokenDirectory(Path directory) {
+        try {
+            try {
+                Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("rwx------"));
+                return;
+            } catch (UnsupportedOperationException ignored) {
+                // Windows uses ACLs instead of POSIX mode bits.
+            }
+            AclFileAttributeView acl = Files.getFileAttributeView(directory, AclFileAttributeView.class);
+            if (acl != null) {
+                var owner = Files.getOwner(directory);
+                AclEntry ownerOnly = AclEntry.newBuilder()
+                        .setType(AclEntryType.ALLOW)
+                        .setPrincipal(owner)
+                        .setPermissions(EnumSet.of(
+                                AclEntryPermission.READ_DATA, AclEntryPermission.WRITE_DATA,
+                                AclEntryPermission.APPEND_DATA, AclEntryPermission.READ_NAMED_ATTRS,
+                                AclEntryPermission.WRITE_NAMED_ATTRS, AclEntryPermission.READ_ATTRIBUTES,
+                                AclEntryPermission.WRITE_ATTRIBUTES, AclEntryPermission.READ_ACL,
+                                AclEntryPermission.WRITE_ACL, AclEntryPermission.WRITE_OWNER,
+                                AclEntryPermission.DELETE, AclEntryPermission.DELETE_CHILD,
+                                AclEntryPermission.LIST_DIRECTORY, AclEntryPermission.ADD_FILE,
+                                AclEntryPermission.ADD_SUBDIRECTORY, AclEntryPermission.SYNCHRONIZE))
+                        .build();
+                acl.setAcl(List.of(ownerOnly));
+                return;
+            }
+            GenerationControl.LOGGER.warn("O sistema de arquivos não oferece ACL/POSIX para restringir o diretório de credenciais: {}", directory);
+        } catch (IOException | SecurityException | UnsupportedOperationException failure) {
+            GenerationControl.LOGGER.warn("Não foi possível restringir as permissões do diretório de credenciais em {}.", directory, failure);
         }
     }
 
@@ -246,12 +489,112 @@ public final class WebPanelServer {
         if (path.equals("/api/session") && method.equals("DELETE")) { logout(exchange, secure); return; }
         String sessionId = authenticatedSession(exchange);
         if (sessionId == null) { json(exchange, 401, Map.of("message", "Entre com o token do painel.")); return; }
+        if (path.equals("/api/session") && method.equals("GET")) {
+            json(exchange, 200, Map.of("authenticated", true, "role", role(sessionId), "actor", actor(sessionId)));
+            return;
+        }
         if (path.equals("/api/state") && method.equals("GET")) {
-            json(exchange, 200, onServer(() -> service.snapshot(sessionId)));
+            json(exchange, 200, onServer(() -> service.snapshot(sessionId, role(sessionId), actor(sessionId))));
+            return;
+        }
+        if (path.equals("/api/metrics") && method.equals("GET")) {
+            json(exchange, 200, onServer(() -> ServerMetrics.snapshot(minecraft)));
+            return;
+        }
+        if (path.equals("/api/credentials")) {
+            if (!canEdit(sessionId)) { json(exchange, 403, Map.of("message", "Esta credencial permite apenas consulta.")); return; }
+            if (method.equals("GET")) {
+                json(exchange, 200, Map.of("credentials", credentialViews()));
+                return;
+            }
+            if (method.equals("POST")) {
+                throttle(sessionId);
+                JsonObject payload = ConfigStore.GSON.fromJson(body(exchange), JsonObject.class);
+                String name = payload != null && payload.has("name") && payload.get("name").isJsonPrimitive()
+                        ? payload.get("name").getAsString() : "";
+                String role = payload != null && payload.has("role") && payload.get("role").isJsonPrimitive()
+                        ? payload.get("role").getAsString() : "";
+                try {
+                    CreatedCredential credential = createCredential(name, role);
+                    json(exchange, 201, Map.of("credential", Map.of("name", credential.name(),
+                            "role", credential.role(), "token", credential.token())));
+                } catch (IllegalStateException conflict) {
+                    throw new WebPanelService.Problem(409, safeMessage(conflict.getMessage()));
+                }
+                return;
+            }
+            if (method.equals("DELETE")) {
+                throttle(sessionId);
+                String name = query(exchange.getRequestURI().getRawQuery()).get("name");
+                try {
+                    if (!revokeCredential(name)) throw new WebPanelService.Problem(404, "Credencial individual não encontrada.");
+                } catch (IllegalStateException conflict) {
+                    throw new WebPanelService.Problem(409, safeMessage(conflict.getMessage()));
+                }
+                json(exchange, 200, Map.of("revoked", true));
+                return;
+            }
+            methodNotAllowed(exchange, "GET, POST, DELETE");
             return;
         }
         if (path.equals("/api/job") && method.equals("GET")) {
             json(exchange, 200, onServer(() -> service.job(sessionId)));
+            return;
+        }
+        if (path.equals("/api/simulate") && method.equals("POST")) {
+            throttle(sessionId);
+            var payload = ConfigStore.GSON.fromJson(body(exchange), WebPanelService.SimulationRequest.class);
+            json(exchange, 200, onServer(() -> service.simulate(payload)));
+            return;
+        }
+        if (path.equals("/api/history") && method.equals("GET")) {
+            String revision = query(exchange.getRequestURI().getRawQuery()).get("revision");
+            if (revision == null || revision.isBlank()) {
+                json(exchange, 200, Map.of("entries", GenerationControl.store().recentChanges()));
+            } else {
+                long selected;
+                try { selected = Long.parseLong(revision); }
+                catch (NumberFormatException invalid) { throw new WebPanelService.Problem(400, "Revisão inválida."); }
+                if (selected < 1) throw new WebPanelService.Problem(400, "Revisão inválida.");
+                try { json(exchange, 200, GenerationControl.store().historyDetail(selected)); }
+                catch (IllegalStateException missing) { throw new WebPanelService.Problem(404, "Alteração não encontrada no histórico."); }
+            }
+            return;
+        }
+        if (path.equals("/api/presets")) {
+            var parameters = query(exchange.getRequestURI().getRawQuery());
+            if (method.equals("GET")) {
+                String id = parameters.get("id");
+                if (id == null || id.isBlank()) json(exchange, 200, Map.of("presets", GenerationControl.store().listPresets()));
+                else {
+                    try { json(exchange, 200, GenerationControl.store().preset(id)); }
+                    catch (IllegalStateException missing) { throw new WebPanelService.Problem(404, missing.getMessage()); }
+                }
+                return;
+            }
+            if (method.equals("POST")) {
+                if (!canEdit(sessionId)) { json(exchange, 403, Map.of("message", "Esta credencial permite apenas consulta.")); return; }
+                throttle(sessionId);
+                var payload = ConfigStore.GSON.fromJson(body(exchange), WebPanelService.PresetRequest.class);
+                if (payload == null || payload.candidate() == null) throw new WebPanelService.Problem(400, "Configuração do preset ausente.");
+                try {
+                    var preset = GenerationControl.store().savePreset(payload.name(), payload.candidate());
+                    json(exchange, 201, Map.of("preset", preset));
+                } catch (IllegalArgumentException invalid) { throw new WebPanelService.Problem(400, safeMessage(invalid.getMessage())); }
+                catch (IllegalStateException conflict) { throw new WebPanelService.Problem(409, safeMessage(conflict.getMessage())); }
+                return;
+            }
+            if (method.equals("DELETE")) {
+                if (!canEdit(sessionId)) { json(exchange, 403, Map.of("message", "Esta credencial permite apenas consulta.")); return; }
+                throttle(sessionId);
+                String id = parameters.get("id");
+                try { GenerationControl.store().deletePreset(id); }
+                catch (IllegalArgumentException invalid) { throw new WebPanelService.Problem(400, safeMessage(invalid.getMessage())); }
+                catch (IllegalStateException missing) { throw new WebPanelService.Problem(404, safeMessage(missing.getMessage())); }
+                json(exchange, 200, Map.of("deleted", true));
+                return;
+            }
+            methodNotAllowed(exchange, "GET, POST, DELETE");
             return;
         }
         if (path.equals("/api/species") && method.equals("GET")) {
@@ -269,14 +612,28 @@ public final class WebPanelServer {
             return;
         }
         if (path.equals("/api/action") && method.equals("POST")) {
+            if (!canEdit(sessionId)) { json(exchange, 403, Map.of("message", "Esta credencial permite apenas consulta.")); return; }
             throttle(sessionId);
             var payload = ConfigStore.GSON.fromJson(body(exchange), WebPanelService.ActionRequest.class);
+            if (payload != null && "applyLiveSettings".equals(payload.action())) {
+                json(exchange, 200, onServer(() -> service.applyLiveGameplaySettings(
+                        sessionId, role(sessionId), actor(sessionId), payload.expectedRevision())));
+                return;
+            }
+            if (payload != null && "save".equals(payload.action())) {
+                json(exchange, 202, onServer(() -> service.beginSave(sessionId, auditActor(sessionId), payload, persistenceExecutor, minecraft::execute)));
+                return;
+            }
+            if (payload != null && Set.of("restore", "restoreRevision", "discard").contains(payload.action())) {
+                json(exchange, 202, onServer(() -> service.beginRecoveryAction(sessionId, auditActor(sessionId), payload, persistenceExecutor, minecraft::execute)));
+                return;
+            }
             json(exchange, 200, onServer(() -> service.action(sessionId, payload)));
             return;
         }
         if (path.equals("/api/session")) { methodNotAllowed(exchange, "GET, POST, DELETE"); return; }
-        if (path.equals("/api/state") || path.equals("/api/job") || path.equals("/api/species") || path.equals("/api/action")) {
-            methodNotAllowed(exchange, path.equals("/api/action") ? "POST" : "GET"); return;
+        if (path.equals("/api/state") || path.equals("/api/metrics") || path.equals("/api/job") || path.equals("/api/species") || path.equals("/api/action") || path.equals("/api/simulate") || path.equals("/api/history") || path.equals("/api/presets") || path.equals("/api/credentials")) {
+            methodNotAllowed(exchange, path.equals("/api/action") || path.equals("/api/simulate") ? "POST" : "GET"); return;
         }
         json(exchange, 404, Map.of("message", "Rota não encontrada."));
     }
@@ -287,8 +644,16 @@ public final class WebPanelServer {
             var parameters = query(exchange.getRequestURI().getRawQuery());
             if (path.equals("/api/pc/players")) {
                 String search = parameters.getOrDefault("q", "");
+                if (search.length() > 64) throw new WebPanelService.Problem(400, "Busca de jogador muito longa.");
+                String cursor = parameters.get("cursor");
                 var directory = onServer(() -> PcInspection.directory(minecraft));
-                json(exchange, 200, Map.of("players", PcInspection.players(directory, search)));
+                PcInspection.PlayerPage page;
+                try { page = PcInspection.players(directory, search, cursor); }
+                catch (IOException failure) { throw new WebPanelService.Problem(422, "Não foi possível indexar os jogadores do servidor."); }
+                LinkedHashMap<String, Object> response = new LinkedHashMap<>();
+                response.put("players", page.players());
+                response.put("nextCursor", page.nextCursor());
+                json(exchange, 200, response);
                 return;
             }
             UUID id;
@@ -325,9 +690,28 @@ public final class WebPanelServer {
         JsonObject payload = ConfigStore.GSON.fromJson(body(exchange), JsonObject.class);
         String received = payload != null && payload.has("token") && payload.get("token").isJsonPrimitive()
                 ? payload.get("token").getAsString() : "";
-        int status = verifyToken(received);
-        if (status == 429) { json(exchange, 429, Map.of("message", "Muitas tentativas. Aguarde um minuto.")); return; }
-        if (status == 401) {
+        Credential credential = null;
+        int rejected = 0;
+        synchronized (loginAttempts) {
+            long now = System.currentTimeMillis();
+            if (now - loginAttempts.started > 60_000) {
+                loginAttempts.started = now;
+                loginAttempts.failures = 0;
+            }
+            if (loginAttempts.failures >= 5) rejected = 429;
+            else {
+                credential = verifyToken(received);
+                if (credential == null) {
+                    loginAttempts.failures++;
+                    rejected = 401;
+                } else {
+                    loginAttempts.started = now;
+                    loginAttempts.failures = 0;
+                }
+            }
+        }
+        if (rejected == 429) { json(exchange, 429, Map.of("message", "Muitas tentativas. Aguarde um minuto.")); return; }
+        if (rejected == 401) {
             json(exchange, 401, Map.of("message", "Token inválido."));
             return;
         }
@@ -335,7 +719,7 @@ public final class WebPanelServer {
             long now = System.currentTimeMillis();
             for (var entry : sessions.entrySet()) {
                 String expiredId = entry.getKey();
-                if (entry.getValue() <= now && sessions.remove(expiredId, entry.getValue())) {
+                if (entry.getValue().expiresAt() <= now && sessions.remove(expiredId, entry.getValue())) {
                     lastAction.remove(expiredId);
                     service.closeSession(expiredId);
                 }
@@ -344,27 +728,20 @@ public final class WebPanelServer {
         if (sessions.size() >= 64) { json(exchange, 429, Map.of("message", "Limite de sessões administrativas atingido.")); return; }
         byte[] raw = new byte[32]; SECURE_RANDOM.nextBytes(raw);
         String id = HexFormat.of().formatHex(raw);
-        sessions.put(id, System.currentTimeMillis() + SESSION_LIFETIME_MS);
+        String role = credential.role();
+        sessions.put(id, new Session(role, credential.name(), System.currentTimeMillis() + SESSION_LIFETIME_MS));
         setSessionCookie(exchange, id, 43200, secure);
-        json(exchange, 200, Map.of("authenticated", true));
+        json(exchange, 200, Map.of("authenticated", true, "role", role, "actor", credential.name()));
     }
 
-    private int verifyToken(String received) {
-        synchronized (loginAttempts) {
-            long now = System.currentTimeMillis();
-            if (now - loginAttempts.started > 60_000) {
-                loginAttempts.started = now;
-                loginAttempts.failures = 0;
-            }
-            if (loginAttempts.failures >= 5) return 429;
-            if (!MessageDigest.isEqual(adminToken.getBytes(StandardCharsets.UTF_8), received.getBytes(StandardCharsets.UTF_8))) {
-                loginAttempts.failures++;
-                return 401;
-            }
-            loginAttempts.started = now;
-            loginAttempts.failures = 0;
-            return 200;
+    private Credential verifyToken(String received) {
+        byte[] supplied = received.getBytes(StandardCharsets.UTF_8);
+        Credential match = null;
+        for (Credential credential : credentials) {
+            boolean equal = MessageDigest.isEqual(credential.token().getBytes(StandardCharsets.UTF_8), supplied);
+            if (equal && match == null) match = credential;
         }
+        return match;
     }
 
     private void logout(HttpExchange exchange, boolean secure) throws IOException {
@@ -386,18 +763,32 @@ public final class WebPanelServer {
     private String authenticatedSession(HttpExchange exchange) {
         String id = cookie(exchange, "GC_SESSION");
         if (id == null) return null;
-        Long expiry = sessions.get(id);
-        if (expiry == null) return null;
+        Session session = sessions.get(id);
+        if (session == null) return null;
         long now = System.currentTimeMillis();
-        if (expiry <= now) {
+        if (session.expiresAt() <= now) {
             sessions.remove(id);
             lastAction.remove(id);
             service.closeSession(id);
             return null;
         }
-        sessions.put(id, now + SESSION_LIFETIME_MS);
+        sessions.put(id, new Session(session.role(), session.actor(), now + SESSION_LIFETIME_MS));
         return id;
     }
+
+    private String role(String sessionId) {
+        Session session = sessions.get(sessionId);
+        return session == null ? "viewer" : session.role();
+    }
+
+    private String actor(String sessionId) {
+        Session session = sessions.get(sessionId);
+        return session == null ? "desconhecido" : session.actor();
+    }
+
+    private String auditActor(String sessionId) { return "web:" + actor(sessionId); }
+
+    private boolean canEdit(String sessionId) { return role(sessionId).equals("admin"); }
 
     private void throttle(String sessionId) {
         long now = System.nanoTime();

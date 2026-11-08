@@ -15,6 +15,16 @@ class ExperienceRulesTest {
         assertEquals(100,ExperienceRules.award(c,PLAYER,100,10000));
         assertEquals(200,ExperienceRules.award(c,"unlisted",100,10000));
     }
+    @Test void multiplierBreakdownMatchesRuntimePriority() {
+        var c=new GenerationConfig(); c.globalXpMultiplier=2;
+        c.groupXpMultipliers.put("vip",1.5); c.playerXpGroups.put(PLAYER,"vip");
+        var group=ExperienceRules.multiplier(c,PLAYER);
+        assertEquals("group",group.source()); assertEquals("vip",group.group()); assertEquals(3,group.total());
+        c.playerXpMultipliers.put(PLAYER,0.5);
+        var individual=ExperienceRules.multiplier(c,PLAYER);
+        assertEquals("individual",individual.source()); assertEquals(1,individual.total());
+        assertEquals(100,ExperienceRules.award(c,PLAYER,100,10000));
+    }
     @Test void awardNeverExceedsRemainingOrOverflows() {
         var c=new GenerationConfig(); c.globalXpMultiplier=100; c.playerXpMultipliers.put(PLAYER,100.0);
         assertEquals(50,ExperienceRules.award(c,PLAYER,Integer.MAX_VALUE,50));

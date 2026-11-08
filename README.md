@@ -6,7 +6,7 @@ Addon Fabric **server-only** para administrar regras do Cobbleverse por um paine
 
 [Read this in English](README.en.md)
 
-> **Versão 0.4.8 — preview.** Use primeiro em uma cópia do servidor e do mundo. Consulte [o estado de validação](docs/TESTING.md).
+> **Versão 0.5.0 — preview.** Use primeiro em uma cópia do servidor e do mundo. Consulte [o estado de validação](docs/TESTING.md).
 
 ## O que administra
 
@@ -15,10 +15,12 @@ Addon Fabric **server-only** para administrar regras do Cobbleverse por um paine
 - Multiplicador de XP global, grupos criados no painel e ajustes por jogador.
 - Limite de nível de Pokémon selvagens, global ou derivado do progresso RCT. Perto de vários jogadores, usa o maior limite aplicável.
 - Multiplicador global de captura que preserva o efeito das Poké Bolas.
-- Consulta das caixas de PC dos jogadores conectados ou com dados salvos no mundo.
-- Validação, diagnóstico, histórico, descarte de rascunho e restauração da revisão anterior.
+- Consulta paginada das caixas de PC dos jogadores conectados ou com dados salvos no mundo.
+- Presets rápidos e nomeados por mundo, além de importação/exportação JSON com comparação antes de aplicar ao rascunho.
+- Validação, histórico sob demanda de MSPT, TPS estimado, CPU Java e tempo de GC, histórico de configurações, descarte de rascunho e restauração da revisão anterior.
+- Acessos individuais de administrador e consulta, revogação de sessões e autoria por conta no histórico.
 
-O painel salva uma revisão pendente. As novas regras entram em vigor quando o servidor reinicia; Pokémon e estruturas que já existem não são removidos.
+O painel salva uma revisão pendente. Depois de validar e salvar, um administrador pode aplicar XP, limites de nível e captura ao vivo; gerações, ginásios, datapacks e regras de mundo entram em vigor quando o servidor reinicia. Pokémon e estruturas que já existem não são removidos.
 
 ## Compatibilidade
 
@@ -39,8 +41,8 @@ As integrações de raids, megaevoluções e spawns de outros mods dependem das 
 1. Faça backup e valide o addon em uma cópia do servidor e do mundo.
 2. Baixe o JAR na página de [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases). As próximas releases também terão `open-admin-tunnel.ps1` e `prepare_server_mods.py` como ferramentas separadas. Se uma release antiga não tiver esses arquivos, obtenha o código-fonte da mesma versão.
 3. Coloque o JAR somente na pasta `mods/` do servidor Fabric. Não o instale nos clientes.
-4. Inicie o servidor e, como administrador, execute `/geracoes web` para ver o endereço e o caminho do token.
-5. No computador do servidor, abra `http://127.0.0.1:8765` e cole o token. Para acesso remoto, configure HTTPS privado ou um túnel SSH. Veja [Administração do painel](docs/ADMIN.md).
+4. Inicie o servidor e, como administrador, execute `/geracoes web` para ver os caminhos das credenciais compartilhadas iniciais.
+5. No computador do servidor, abra `http://127.0.0.1:8765` e use o token de administrador inicial. Em **Acessos**, crie um token individual para cada pessoa e revogue os compartilhados quando não forem mais necessários. O token de consulta pode ver estado, PCs, histórico, exportar e usar o simulador; somente administradores podem alterar configurações ou acessos. Para acesso remoto, configure HTTPS privado ou um túnel SSH. Veja [Administração do painel](docs/ADMIN.md).
 
 O painel fica preso a `127.0.0.1`. **Não exponha a porta 8765 à internet nem aos jogadores.** A configuração de porta fica em `<mundo>/generation-control/web.properties`; alterá-la exige reiniciar o processo.
 
@@ -66,7 +68,7 @@ O JAR remapeado fica em `build/libs/`. React, Vite e Node geram os arquivos est�
 
 ## Segurança e desempenho
 
-O servidor HTTP usa o JDK, autenticação por token e sessão, validação de origem e sem CORS. O token é criado dentro dos dados do mundo; o mod tenta restringir as permissões do arquivo ao usuário do servidor. O helper PowerShell facilita um túnel SSH no Windows; `prepare_server_mods.py` cria uma cópia de mods para servidor sem alterar a instância cliente. Mais detalhes em [Administração](docs/ADMIN.md).
+O servidor HTTP usa o JDK, tokens por conta, sessões, validação de origem e sem CORS. As credenciais ficam nos dados do mundo; o mod tenta restringir as permissões dos arquivos e da pasta ao usuário do servidor. Revisões feitas pelo painel identificam a conta no histórico. O helper PowerShell facilita um túnel SSH no Windows; `prepare_server_mods.py` cria uma cópia de mods para servidor sem alterar a instância cliente. Mais detalhes em [Administração](docs/ADMIN.md).
 
 O addon não varre jogadores, Pokémon, entidades ou chunks continuamente. Validações pesadas só começam após solicitação administrativa e são processadas em lotes. Não foram incluídas cópias de outros mods nem uma segunda camada de otimização. **Ainda não há benchmark A/B que prove ganho de TPS ou memória**; consulte [arquitetura e custo](docs/ARCHITECTURE.md).
 

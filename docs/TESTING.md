@@ -2,6 +2,10 @@
 
 O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este documento separa o que foi observado do que ainda precisa de servidor e jogadores reais.
 
+## Checkout local após 0.4.8
+
+O checkout atual inclui aplicação ao vivo seletiva de XP/limites/captura, reavaliação por store alterado durante a prévia e métricas sob demanda de TPS estimado, CPU Java e GC. A deduplicação dos stores é preservada com snapshots temporários limitados. O smoke do pack foi ampliado para consultar métricas, aplicar e descartar os ajustes ao vivo e alterar um PC durante a prévia para conferir a reavaliação. Em 08/11/2026, `gradlew.bat remapJar` passou, incluindo compilação Java e painel web. O smoke ampliado ainda não foi executado nesta máquina; as mudanças não foram publicadas nem validadas em um host dedicado.
+
 ## Teste do pack no GitHub
 
 O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Modrinth, verifica os arquivos e inicia um servidor e um cliente Fabric em uma máquina temporária do GitHub. O JAR informado no formulário é instalado apenas no servidor. O teste usa um mundo descartável e credenciais locais. A partir da 0.4.8, o teste consulta o PC em memória e o arquivo salvo após reiniciar; os smokes `42435709615` e `42436621152` também validaram o armazenamento carregado enquanto o jogador estava conectado.

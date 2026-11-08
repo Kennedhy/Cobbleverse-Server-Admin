@@ -58,6 +58,29 @@ public final class GenerationRules {
         return true;
     }
 
+    /** Detailed explanation for the on-demand admin simulator; runtime checks keep using allowed(). */
+    public String explain(String species, int dex, String form) {
+        return explain(species, dex, form, List.of());
+    }
+
+    public String explain(String species, int dex, String form, Iterable<String> aspects) {
+        String key = speciesKey(species);
+        if (config.denySpecies.contains(key)) return "Bloqueada pela exceção de espécie.";
+        if (!config.allowSpecies.contains(key) && !(key.startsWith("cobblemon:") && config.generations.contains(generation(dex))))
+            return "A geração de estreia da espécie não está habilitada.";
+        String normalized = FormNames.canonical(form);
+        String formKey = key + "/" + normalized;
+        if (config.denyForms.contains(formKey)) return "Bloqueada pela exceção de forma.";
+        if (config.allowForms.contains(formKey)) return "Permitida pela exceção de forma.";
+        if (!config.megaEvolutions && FormNames.activeMega(normalized)) return "Megas e formas primais estão desativadas.";
+        if (!config.regionalForms && isRegional(normalized)) return "Formas regionais estão desativadas.";
+        if (aspects != null) for (String aspect : aspects) {
+            if (!config.megaEvolutions && FormNames.activeMega(aspect)) return "Megas e formas primais estão desativadas.";
+            if (!config.regionalForms && isRegional(aspect.toLowerCase(Locale.ROOT))) return "Formas regionais estão desativadas.";
+        }
+        return "Permitida pelas regras atuais.";
+    }
+
     private static boolean isRegional(String token) {
         return token.contains("alola") || token.contains("galar") || token.contains("hisui") || token.contains("hisuian") || token.contains("paldea") || token.contains("sevii");
     }

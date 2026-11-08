@@ -127,8 +127,19 @@ def panel_smoke(server):
     while True:
         try:
             with opener.open(PANEL_ADDRESS + "/api/state", timeout=8) as response:
-                if json.load(response)["world"] != "smoke-world":
+                state = json.load(response)
+                if state["world"] != "smoke-world":
                     raise RuntimeError("Panel reported a different world")
+            if "estimatedTps" in state:
+                with opener.open(PANEL_ADDRESS + "/api/metrics", timeout=8) as response:
+                    metrics = json.load(response)
+                if not metrics.get("samples"):
+                    raise RuntimeError("Diagnostics did not return a runtime sample")
+                sample = metrics["samples"][-1]
+                for field in ("estimatedTps", "tickMs", "heapUsedMb", "gcCollectionDelta", "gcTimeDeltaMs"):
+                    if field not in sample:
+                        raise RuntimeError(f"Diagnostics sample is missing {field}")
+                print("On-demand diagnostics returned TPS estimate, MSPT, heap, and GC metrics.")
             print("Authenticated panel state passed.")
             return opener
         except urllib.error.HTTPError as failure:
@@ -181,6 +192,35 @@ def api(opener, path, **params):
         return json.load(response)
 
 
+def panel_request(opener, path, payload=None):
+    data = None if payload is None else json.dumps(payload).encode()
+    headers = {} if payload is None else {"Content-Type": "application/json", "Origin": PANEL_ADDRESS}
+    request = urllib.request.Request(PANEL_ADDRESS + path, data=data, headers=headers)
+    with opener.open(request, timeout=10) as response:
+        return json.load(response)
+
+
+def wait_for_job(opener, action, terminal, seconds=240):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        job = panel_request(opener, "/api/job").get("job")
+        if job is None or job.get("action") != action:
+            raise RuntimeError(f"Panel lost the {action} operation")
+        if job.get("status") != "running":
+            if job["status"] not in terminal:
+                raise RuntimeError(f"Panel {action} failed: {job.get('message')}")
+            return job
+        time.sleep(1)
+    raise RuntimeError(f"Panel {action} did not finish within {seconds} seconds")
+
+
+def assert_live_settings(live, config):
+    for field in ("manageExperience", "globalXpMultiplier", "playerXpMultipliers", "groupXpMultipliers",
+                  "playerXpGroups", "levelCapMode", "globalLevelCap", "wildLevelBehavior", "captureMultiplier"):
+        if live.get(field) != config.get(field):
+            raise RuntimeError(f"Runtime gameplay setting {field} does not match the expected config")
+
+
 def has_fixture_pokemon(box):
     return any(slot["species"] == "cobblemon:pikachu" and slot["level"] == 13 and slot["shiny"]
                for slot in box["slots"])
@@ -209,7 +249,11 @@ def live_pc_smoke(opener, dedicated):
     raise RuntimeError("The fixture Pokémon did not appear in the live box")
 
 
-def validation_smoke(opener):
+def validation_smoke(opener, dedicated):
+    # Keep one loaded PC large enough for a deterministic store mutation while it is scanned.
+    dedicated.stdin.write((f"givepokemonother {PLAYER} bulbasaur\n" * 240).encode())
+    dedicated.stdin.flush()
+    time.sleep(1)
     with opener.open(PANEL_ADDRESS + "/api/state", timeout=8) as response:
         state = json.load(response)
     candidate = state["active"]
@@ -229,24 +273,91 @@ def validation_smoke(opener):
             raise RuntimeError("Panel did not start the player-storage validation")
 
     deadline = time.monotonic() + 240
+    mutation_sent = False
+    store_recheck_seen = False
     while time.monotonic() < deadline:
         with opener.open(PANEL_ADDRESS + "/api/job", timeout=8) as response:
             job = json.load(response)["job"]
         if job is None:
             raise RuntimeError("Panel lost the player-storage validation job")
+        phase = (job.get("progress") or {}).get("phase")
+        if phase == "player-scan" and not mutation_sent:
+            dedicated.stdin.write(f"givepokemonother {PLAYER} pikachu level=14\n".encode())
+            dedicated.stdin.flush()
+            mutation_sent = True
+        if phase == "player-store-recheck":
+            store_recheck_seen = True
         if job["status"] != "running":
             if job["status"] != "validated":
                 raise RuntimeError(f"Player-storage validation failed: {job['message']}")
             report = job["report"]
             if report["inspectedPlayers"] < 1:
                 raise RuntimeError("Validation completed without scanning the connected player's storage")
+            if not mutation_sent or not store_recheck_seen:
+                raise RuntimeError("Validation did not re-evaluate the loaded store mutated during its scan")
             print(
-                "Panel validation scanned the connected player's loaded storage in bounded batches "
-                f"({report['inspectedPlayers']} player(s))."
+                "Panel validation scanned loaded storage in bounded batches and re-evaluated only "
+                f"the changed store ({report['inspectedPlayers']} player(s))."
             )
             return
-        time.sleep(1)
+        time.sleep(0.1)
     raise RuntimeError("Player-storage validation did not finish within 240 seconds")
+
+
+def live_settings_smoke(opener):
+    state = panel_request(opener, "/api/state")
+    if "liveGameplaySettings" not in state:
+        print("Live gameplay settings are not exposed by this older build; selective-apply smoke skipped.")
+        return
+    original = state["active"]
+    candidate = json.loads(json.dumps(original))
+    candidate["manageExperience"] = True
+    candidate["globalXpMultiplier"] = 1.5 if original["globalXpMultiplier"] != 1.5 else 1.25
+    candidate["levelCapMode"] = "global"
+    candidate["globalLevelCap"] = 37 if original["globalLevelCap"] != 37 else 38
+    candidate["wildLevelBehavior"] = "block" if original["wildLevelBehavior"] != "block" else "clamp"
+    candidate["captureMultiplier"] = 1.5 if original["captureMultiplier"] != 1.5 else 1.25
+    validation = panel_request(opener, "/api/action", {
+        "action": "validate", "expectedRevision": state["editRevision"],
+        "candidate": candidate, "fingerprint": None,
+    }).get("job")
+    if validation is None or validation.get("status") not in {"running", "validated"}:
+        raise RuntimeError("Panel did not start gameplay-settings validation")
+    if validation["status"] == "running":
+        validation = wait_for_job(opener, "validate", {"validated"})
+    save = panel_request(opener, "/api/action", {
+        "action": "save", "expectedRevision": state["editRevision"],
+        "candidate": candidate, "fingerprint": validation["fingerprint"],
+    }).get("job")
+    if save is None or save.get("action") != "save":
+        raise RuntimeError("Panel did not start saving gameplay settings")
+    if save["status"] == "running":
+        save = wait_for_job(opener, "save", {"saved"})
+    pending_state = save.get("state")
+    if pending_state is None or not pending_state.get("pendingGameplaySettingsDiffer"):
+        raise RuntimeError("Saved gameplay settings were not marked as pending live application")
+
+    applied = panel_request(opener, "/api/action", {
+        "action": "applyLiveSettings", "expectedRevision": pending_state["editRevision"],
+    })
+    if applied.get("pendingGameplaySettingsDiffer"):
+        raise RuntimeError("Panel still reports gameplay settings as unapplied")
+    assert_live_settings(applied["liveGameplaySettings"], candidate)
+    if applied["active"]["generations"] != original["generations"]:
+        raise RuntimeError("Applying live gameplay settings changed active generation rules")
+
+    discard = panel_request(opener, "/api/action", {
+        "action": "discard", "expectedRevision": applied["editRevision"],
+    }).get("job")
+    if discard is None or discard.get("action") != "discard":
+        raise RuntimeError("Panel did not start discarding the pending revision")
+    if discard["status"] == "running":
+        discard = wait_for_job(opener, "discard", {"completed"})
+    restored = discard.get("state")
+    if restored is None or restored.get("pending") is not None:
+        raise RuntimeError("Discard did not remove the pending revision")
+    assert_live_settings(restored["liveGameplaySettings"], restored["active"])
+    print("XP, level caps, and capture applied live; discarding restored active gameplay settings.")
 
 
 def saved_pc_smoke(root, server, player_id):
@@ -325,7 +436,8 @@ def run(root):
                     print("Fabric client without the manager joined the dedicated server.")
                     if version >= (0, 4, 8):
                         checked_pc = live_pc_smoke(opener, dedicated)
-                        validation_smoke(opener)
+                        validation_smoke(opener, dedicated)
+                        live_settings_smoke(opener)
                 finally:
                     finish(player)
             if checked_pc:

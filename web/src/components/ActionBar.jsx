@@ -1,6 +1,12 @@
-import { Check, LoaderCircle, Save, RefreshCw } from 'lucide-react';
+import { Check, LoaderCircle, Play, Save, RefreshCw } from 'lucide-react';
 
-export function ActionBar({ onRefresh, onValidate, onSave, dirty, validated, working, pending, message }) {
+export function ActionBar({ onRefresh, onValidate, onSave, onApplyLive, dirty, validated, working,
+  pending, applyLiveAvailable, liveGameplayRevision, message }) {
+  const status = message || (pending
+    ? applyLiveAvailable
+      ? `XP, limites e captura ainda usam a revisão ${liveGameplayRevision}; as demais regras aguardam reinício.`
+      : 'XP, limites e captura já correspondem ao servidor; as demais regras aguardam reinício.'
+    : 'Alterações salvas entram em vigor após reiniciar o servidor.');
   return <div className="action-dock">
     <div className="action-row">
       <button className="button button-quiet" type="button" onClick={onRefresh} disabled={working}>
@@ -17,7 +23,13 @@ export function ActionBar({ onRefresh, onValidate, onSave, dirty, validated, wor
       </div>
     </div>
     <p className={`dock-status ${pending ? 'status-warning' : validated && dirty ? 'status-success' : ''}`}>
-      {message || (pending ? 'Há alterações pendentes. Reinicie o servidor para aplicá-las.' : 'Alterações salvas entram em vigor após reiniciar o servidor.')}
+      {status}
     </p>
+    {pending && applyLiveAvailable && <div className="live-apply-row">
+      <span>Aplicar XP, limites de nível e captura da revisão pendente sem reiniciar. Gerações, ginásios e mundo continuam pendentes.</span>
+      <button className="button button-quiet button-small" type="button" disabled={working || dirty} onClick={onApplyLive}>
+        <Play size={15} />Aplicar ao vivo
+      </button>
+    </div>}
   </div>;
 }

@@ -29,12 +29,14 @@ final class OfflineFileLedger {
         Stamp old=stamps.putIfAbsent(path,stamp);
         if(old!=null && !old.equals(stamp)) throw new IllegalStateException("Arquivo alterado durante a análise: "+path);
     }
-    CompletableFuture<Void> verify() {
+    CompletableFuture<Void> verify(ValidationIo io) {
         Map<Path,Stamp> snapshot=Map.copyOf(stamps);
-        return CompletableFuture.runAsync(()-> {
+        return io.submit(()-> {
             for(var entry:snapshot.entrySet()) try {
+                ValidationIo.checkCancelled();
                 if(!entry.getValue().equals(stamp(entry.getKey()))) throw new IllegalStateException("Arquivo de Pokémon mudou durante a análise: "+entry.getKey());
             } catch(IOException e) { throw new CompletionException(e); }
+            return null;
         });
     }
 }

@@ -5,7 +5,7 @@ on:
     inputs:
       manager_tag:
         description: Published preview tag (used when build_run is empty)
-        default: v0.4.8
+        default: v0.5.0
         type: string
       build_run:
         description: Successful Build run ID on main for testing unpublished changes

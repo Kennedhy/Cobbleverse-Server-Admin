@@ -18,7 +18,7 @@ class WebPanelServiceTest {
         String session = "admin-session";
         jobs.put(session, active);
 
-        var request = new WebPanelService.ActionRequest("validate", 1, new GenerationConfig(), "");
+        var request = new WebPanelService.ActionRequest("validate", 1, 0, new GenerationConfig(), "");
         var problem = assertThrows(WebPanelService.Problem.class, () -> service.validate(session, request));
 
         assertEquals(409, problem.status);

@@ -2,7 +2,7 @@ package br.com.cobbleverse.generations.integration;
 
 import br.com.cobbleverse.generations.GenerationControl;
 import br.com.cobbleverse.generations.rules.CaptureRules;
-import br.com.cobbleverse.generations.rules.GenerationRules;
+import br.com.cobbleverse.generations.rules.GameplaySettings;
 import com.cobblemon.mod.common.Cobblemon;
 import com.cobblemon.mod.common.api.pokedex.CaughtCount;
 import net.minecraft.entity.LivingEntity;
@@ -10,14 +10,14 @@ import net.minecraft.server.network.ServerPlayerEntity;
 
 /** Only called once per capture calculation, never on a recurring tick. */
 public final class CaptureManager {
-    private static GenerationRules cachedRules;
+    private static GameplaySettings cachedSettings;
     private static double multiplier=1;
     private CaptureManager() {}
-    public static void clear() { cachedRules=null; multiplier=1; }
+    public static void clear() { cachedSettings=null; multiplier=1; }
     public static int threshold(int original,LivingEntity thrower,float modifiedCatchRate,boolean critical) {
         if(!GenerationControl.ready()) return original;
-        var rules=GenerationControl.rules();
-        if(rules!=cachedRules) { cachedRules=rules; multiplier=rules.config().captureMultiplier; }
+        GameplaySettings settings=GenerationControl.gameplaySettings();
+        if(settings!=cachedSettings) { cachedSettings=settings; multiplier=settings==null ? 1 : settings.captureMultiplier(); }
         if(multiplier==1) return original;
         double criticalChance=0;
         if(thrower instanceof ServerPlayerEntity player) {
