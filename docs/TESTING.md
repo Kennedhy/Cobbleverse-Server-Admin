@@ -2,9 +2,9 @@
 
 O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este documento separa o que foi observado do que ainda precisa de servidor e jogadores reais.
 
-## Checkout local após 0.4.8
+## Build 0.5.0
 
-O checkout atual inclui aplicação ao vivo seletiva de XP/limites/captura, reavaliação por store alterado durante a prévia e métricas sob demanda de TPS estimado, CPU Java e GC. A deduplicação dos stores é preservada com snapshots temporários limitados. O smoke do pack foi ampliado para consultar métricas, aplicar e descartar os ajustes ao vivo e alterar um PC durante a prévia para conferir a reavaliação. Em 08/11/2026, `gradlew.bat remapJar` passou, incluindo compilação Java e painel web. O smoke ampliado ainda não foi executado nesta máquina; as mudanças não foram publicadas nem validadas em um host dedicado.
+O Build [42494175268](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42494175268) passou no commit `d877fe9`: testes, JAR remapeado e auditoria server-only. A versão inclui aplicação ao vivo seletiva de XP/limites/captura, reavaliação de store alterado durante a prévia e métricas sob demanda de TPS estimado, CPU Java e GC. A deduplicação entre party, PC e reserva é mantida com snapshots temporários limitados. O smoke foi ampliado para cobrir métricas, aplicação/descarte ao vivo e mudança do PC durante a validação; essa execução completa do pack continua pendente. Ainda não há medição A/B em host dedicado.
 
 ## Teste do pack no GitHub
 
@@ -12,7 +12,7 @@ O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Mo
 
 Para testar mudanças ainda sem release, informe em `build_run` o ID de uma execução bem-sucedida do workflow **Build** na branch `main`. Com esse campo preenchido, o teste usa o artefato da compilação. O build `42429072403` já inclui o JAR e o helper SSH para Windows como arquivos separados.
 
-## Alterações após 0.4.8 (sem nova release)
+## Alterações incorporadas em 0.5.0
 
 - O commit `a484f14` removeu listas e conjuntos temporários por forma na validação do catálogo de espécies e formas. O Build `42436514507` passou; o smoke `42436621152` passou com o Cobbleverse 1.7.42 e exercitou a prévia em lotes para 1 jogador conectado, além dos testes de painel/PC e cliente sem o JAR. [Execução e logs](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42436621152).
 - A otimização reduz alocações transitórias durante a validação, mas não temos uma medição de bytes alocados, MSPT, heap ou TPS para quantificar o ganho. Continua pendente o A/B no host dedicado.
