@@ -13,6 +13,9 @@ public final class GymStructures {
     );
     private GymStructures() {}
 
+    public static Set<String> regions() { return STRUCTURES.keySet(); }
+    public static int count(String region) { return STRUCTURES.getOrDefault(region, Set.of()).size(); }
+
     public static String region(String path) {
         String prefix="worldgen/structure/";
         if (!path.startsWith(prefix) || !path.endsWith(".json")) return null;
