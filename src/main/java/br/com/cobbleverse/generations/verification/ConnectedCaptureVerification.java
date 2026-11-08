@@ -1,6 +1,7 @@
 package br.com.cobbleverse.generations.verification;
 import br.com.cobbleverse.generations.GenerationControl;
 import br.com.cobbleverse.generations.config.ConfigStore;
+import br.com.cobbleverse.generations.rules.GameplaySettings;
 import br.com.cobbleverse.generations.rules.GenerationRules;
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties;
 import com.cobblemon.mod.common.api.pokeball.PokeBalls;
@@ -14,11 +15,11 @@ import java.util.*;
 /** Server-only, disposable, sample-based connected-player capture fixture. */
 public final class ConnectedCaptureVerification implements ModInitializer {
  public void onInitialize(){ServerTickEvents.END_SERVER_TICK.register(new ServerTickEvents.EndTick(){
-  final int sample=2000; int phase=-1,count,success; int[] counts=new int[4]; boolean done; GenerationRules original; EmptyPokeBallEntity ball; PokemonEntity target; java.lang.reflect.Field field; int zeroSuccess;
+  final int sample=2000; int phase=-1,count,success; int[] counts=new int[4]; boolean done; GenerationRules original; GameplaySettings originalSettings; EmptyPokeBallEntity ball; PokemonEntity target; java.lang.reflect.Field field,settingsField; int zeroSuccess;
   public void onEndTick(net.minecraft.server.MinecraftServer server){
    if(done)return;var player=server.getPlayerManager().getPlayer("NetAdmin");if(player==null)return;
    try {
-    if(phase==-1){original=GenerationControl.rules();field=GenerationControl.class.getDeclaredField("rules");field.setAccessible(true);var world=server.getOverworld();ball=new EmptyPokeBallEntity(world);target=PokemonProperties.Companion.parse("bulbasaur level=5").createEntity(world);phase=0;setPolicy(1);}
+    if(phase==-1){original=GenerationControl.rules();originalSettings=GenerationControl.gameplaySettings();field=GenerationControl.class.getDeclaredField("rules");field.setAccessible(true);settingsField=GenerationControl.class.getDeclaredField("gameplaySettings");settingsField.setAccessible(true);var world=server.getOverworld();ball=new EmptyPokeBallEntity(world);target=PokemonProperties.Companion.parse("bulbasaur level=5").createEntity(world);phase=0;setPolicy(1);}
     if(phase<4){ball.setPokeBall((phase%2)==0?PokeBalls.getPokeBall():PokeBalls.getUltraBall());
      for(int n=0;n<100 && count<sample;n++,count++)if(CobblemonCaptureCalculator.INSTANCE.processCapture(player,ball,target).isSuccessfulCapture())success++;
      if(count==sample){counts[phase]=success;phase++;count=0;success=0;if(phase==2)setPolicy(2);}
@@ -31,7 +32,7 @@ public final class ConnectedCaptureVerification implements ModInitializer {
     out.put("success",zeroSuccess==0 && master && u1>p1 && u2>p2 && Math.abs(p2-2*p1)<0.09 && Math.abs(u2-2*u1)<0.09);finish(server,out);
    }catch(Throwable e){e.printStackTrace();finish(server,Map.of("fatal",e.toString(),"phase",phase));}
   }
-  void setPolicy(double multiplier)throws Exception {var c=original.config();c.captureMultiplier=multiplier;field.set(null,new GenerationRules(c));}
-  void finish(net.minecraft.server.MinecraftServer server,Map<String,Object> out){done=true;try{if(field!=null&&original!=null)field.set(null,original);ConfigStore.write(Path.of("connected-capture-result.json").toAbsolutePath(),out);}catch(Exception e){e.printStackTrace();}server.stop(false);}
+  void setPolicy(double multiplier)throws Exception {var c=original.config();c.captureMultiplier=multiplier;field.set(null,new GenerationRules(c));settingsField.set(null,GameplaySettings.from(c));}
+  void finish(net.minecraft.server.MinecraftServer server,Map<String,Object> out){done=true;try{if(field!=null&&original!=null)field.set(null,original);if(settingsField!=null&&originalSettings!=null)settingsField.set(null,originalSettings);ConfigStore.write(Path.of("connected-capture-result.json").toAbsolutePath(),out);}catch(Exception e){e.printStackTrace();}server.stop(false);}
  });}
 }
