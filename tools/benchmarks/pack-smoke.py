@@ -30,6 +30,7 @@ FABRIC = "https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.18.4/1.1.0/serve
 GAME_ADDRESS = "127.0.0.1:25585"
 PANEL_ADDRESS = "http://127.0.0.1:8765"
 PLAYER = "CobbleSmoke"
+SIMULATION_PLAYER_UUID = "3d0bbb38-80e3-3a3d-9a13-84995b87f05a"
 
 
 def download(url, target, sha512=None):
@@ -230,6 +231,47 @@ def assert_live_settings(live, config):
                   "playerXpGroups", "levelCapMode", "globalLevelCap", "wildLevelBehavior", "captureMultiplier"):
         if live.get(field) != config.get(field):
             raise RuntimeError(f"Runtime gameplay setting {field} does not match the expected config")
+
+
+def policy_simulation_smoke(opener):
+    state = panel_request(opener, "/api/state")
+    generation_one = json.loads(json.dumps(state["active"]))
+    generation_one.update(mode="single", selectedGeneration=1, generations=[1])
+
+    def simulate(candidate, species):
+        return panel_request(opener, "/api/simulate", {
+            "candidate": candidate, "playerUuid": SIMULATION_PLAYER_UUID,
+            "species": species, "form": None, "baseXp": 10, "remainingXp": 100,
+        })
+
+    kanto = simulate(generation_one, "bulbasaur")
+    johto = simulate(generation_one, "chikorita")
+    if kanto["generation"] != 1 or not kanto["allowed"]:
+        raise RuntimeError("Generation-one Pokémon was not allowed by the single-generation policy")
+    if johto["generation"] != 2 or johto["allowed"]:
+        raise RuntimeError("Generation-two Pokémon was not blocked by the single-generation policy")
+
+    cumulative = json.loads(json.dumps(generation_one))
+    cumulative.update(mode="cumulative", selectedGeneration=2, generations=[1, 2])
+    johto_cumulative = simulate(cumulative, "chikorita")
+    if not johto_cumulative["allowed"]:
+        raise RuntimeError("Cumulative generations did not include generation-two Pokémon")
+
+    gameplay = json.loads(json.dumps(generation_one))
+    gameplay.update(
+        manageExperience=True, globalXpMultiplier=2.0,
+        groupXpMultipliers={"vip": 1.5}, playerXpGroups={SIMULATION_PLAYER_UUID: "vip"},
+        levelCapMode="global", globalLevelCap=37, wildLevelBehavior="clamp",
+    )
+    grouped = simulate(gameplay, "bulbasaur")
+    if (grouped["xpSource"] != "group" or grouped["xpGroup"] != "vip"
+            or grouped["awardedXp"] != 30 or grouped["levelCap"] != 37):
+        raise RuntimeError("Group XP multiplier or global level cap did not match the server policy")
+    gameplay["playerXpMultipliers"] = {SIMULATION_PLAYER_UUID: 0.5}
+    individual = simulate(gameplay, "bulbasaur")
+    if individual["xpSource"] != "individual" or individual["awardedXp"] != 10:
+        raise RuntimeError("Individual XP multiplier did not override the group policy")
+    print("Live simulation confirmed generation filters, group/player XP, and global level cap.")
 
 
 def has_fixture_pokemon(box):
@@ -440,6 +482,8 @@ def run(root):
         try:
             wait_for(dedicated, server_log, "Painel web local:", 300)
             opener = panel_smoke(server)
+            if version >= (0, 4, 8):
+                policy_simulation_smoke(opener)
             with (root / "client.log").open("wb") as output:
                 player = subprocess.Popen(args, cwd=client, stdout=output, stderr=subprocess.STDOUT)
                 try:
