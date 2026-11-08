@@ -36,13 +36,13 @@ jobs:
       - name: Test and build server mod
         run: ./gradlew --no-daemon --max-workers=1 test remapJar
       - name: Include server administration tools
-        run: cp tools/open-admin-tunnel.ps1 tools/prepare-server-mods.py build/libs/
+        run: cp tools/open-admin-tunnel.ps1 tools/prepare_server_mods.py build/libs/
       - uses: actions/upload-artifact@v7
         with:
           name: cobbleverse-server-admin-${{ github.sha }}
           path: |
             build/libs/cobbleverse-generation-control-*.jar
             build/libs/open-admin-tunnel.ps1
-            build/libs/prepare-server-mods.py
+            build/libs/prepare_server_mods.py
           if-no-files-found: error
           retention-days: 14

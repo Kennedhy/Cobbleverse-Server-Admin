@@ -58,12 +58,12 @@ Em um servidor Windows, adicione `-RemoteTokenShell Windows` e use o caminho Win
 
 ### Preparar a pasta de mods do dedicado
 
-O utilitário `prepare-server-mods.py` acompanha os artefatos do workflow Build e as próximas releases. Ele cria uma nova pasta somente com JARs compatíveis com o servidor. Lê o `modrinth.index.json`, exclui JARs marcados como `environment: client` pelo Fabric e preserva os demais arquivos da instância de origem. Não altera a instância do cliente, não copia configs e recusa sobrescrever uma pasta de destino existente. O relatório ao lado da pasta mostra o que foi incluído e excluído. O Fabric confirma que mods com `environment: client` não são carregados em servidores dedicados ([metadados `fabric.mod.json`](https://docs.fabricmc.net/develop/loader/fabric-mod-json)).
+O utilitário `prepare_server_mods.py` acompanha os artefatos do workflow Build e as próximas releases. Ele cria uma nova pasta somente com JARs compatíveis com o servidor. Lê o `modrinth.index.json`, exclui JARs marcados como `environment: client` pelo Fabric e preserva os demais arquivos da instância de origem. Não altera a instância do cliente, não copia configs e recusa sobrescrever uma pasta de destino existente. O relatório ao lado da pasta mostra o que foi incluído e excluído. O Fabric confirma que mods com `environment: client` não são carregados em servidores dedicados ([metadados `fabric.mod.json`](https://docs.fabricmc.net/develop/loader/fabric-mod-json)).
 
 Exemplo no PowerShell, usando a instalação local do pack como origem e uma pasta nova como destino:
 
 ```powershell
-python .\tools\prepare-server-mods.py `
+python .\tools\prepare_server_mods.py `
   'C:\caminho\da\instancia\minecraft\mods' `
   'C:\caminho\da\instancia\mrpack\modrinth.index.json' `
   'D:\Cobbleverse\staging\mods'
