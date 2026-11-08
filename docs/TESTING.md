@@ -6,7 +6,13 @@ O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este doc
 
 O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Modrinth, verifica os arquivos e inicia um servidor e um cliente Fabric em uma máquina temporária do GitHub. O JAR informado no formulário é instalado apenas no servidor. O teste usa um mundo descartável e credenciais locais. A partir da 0.4.8, o teste também consulta o PC em memória e o arquivo salvo após reiniciar.
 
-Para testar mudanças ainda sem release, informe em `build_run` o ID de uma execução bem-sucedida do workflow **Build** na branch `main`. Com esse campo preenchido, o teste usa o artefato da compilação. A partir da próxima execução, esse artefato também incluirá o helper SSH para Windows como arquivo separado.
+Para testar mudanças ainda sem release, informe em `build_run` o ID de uma execução bem-sucedida do workflow **Build** na branch `main`. Com esse campo preenchido, o teste usa o artefato da compilação. O build `42429072403` já inclui o JAR e o helper SSH para Windows como arquivos separados.
+
+## Alterações após 0.4.8 (sem nova release)
+
+- O build `42429072403` passou por testes e empacotamento. O artefato contém `cobbleverse-generation-control-0.4.8.jar` e `open-admin-tunnel.ps1` separados. O JAR foi verificado como server-only: ambiente `server`, somente entrypoint de servidor, 99 classes e nenhuma classe cliente; os cinco recursos web estão empacotados. [Execução do Build](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42429072403).
+- O smoke test usou esse JAR no servidor dedicado temporário, subiu o Cobbleverse 1.7.42, autenticou no painel, conectou um cliente do pack sem o gerenciador e verificou o PC ao vivo e depois de reiniciar o servidor. O Pokémon de fixture foi encontrado em ambos os estados. [Execução e logs](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42429289309).
+- Estes resultados validam o pack de referência em runners temporários do GitHub. Não medem acesso ao host dedicado final, MSPT/TPS sob carga representativa, nem desempenho A/B.
 
 ## Versão 0.4.8
 
@@ -63,11 +69,11 @@ Esse teste não validou host dedicado via SSH, carga real, migração de progres
 
 | Área | Estado | Observação |
 | --- | --- | --- |
-| Compilação e empacotamento | 0.4.8 concluído | Build sem `packDir` local; artefato sem release usado no smoke test completo |
-| Metadados server-only | 0.4.8 verificados | `environment: server`, apenas entrypoint de servidor; cliente do pack entrou sem o JAR |
+| Compilação e empacotamento | 0.4.8 concluído | Build `42429072403`; artefato contém JAR e helper SSH separado |
+| Metadados server-only | 0.4.8 verificados | `environment: server`, apenas entrypoint de servidor; cliente do pack entrou sem o JAR no smoke `42429289309` |
 | Painel HTTP, token e sessão | 0.4.5 observado localmente | Loopback e proxy de teste com TLS |
-| PC dos jogadores | 0.4.8 observado no pack | Consulta autenticada ao PC ao vivo e salvo após reinício |
-| Cliente do pack sem o addon | 0.4.8 conectado em Linux | [Execução do teste](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42425118940) |
+| PC dos jogadores | 0.4.8 observado no pack | Consulta autenticada ao PC ao vivo e salvo após reinício no smoke `42429289309` |
+| Cliente do pack sem o addon | 0.4.8 conectado em Linux | [Execução do smoke mais recente](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42429289309) |
 | Spawn, XP, captura, RCT e addons | Parcial | Cobertura varia por evento e versão |
 | Tailscale Serve ou túnel SSH no host de destino | Pendente | Requer host acessível pela rede privada |
 | TPS, heap e memória sob carga | Pendente | Sem benchmark A/B representativo |
