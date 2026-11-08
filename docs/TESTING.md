@@ -4,17 +4,17 @@ O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este doc
 
 ## Build 0.5.0
 
-O Build [42496572379](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42496572379) passou no commit `1aac404`: testes, JAR remapeado, auditoria server-only e pacote web identificado como 0.5.0. A versão inclui aplicação ao vivo seletiva de XP/limites/captura, reavaliação de store alterado durante a prévia e métricas sob demanda de TPS estimado, CPU Java e GC. A deduplicação entre party, PC e reserva é mantida com snapshots temporários limitados. O JAR da release tem o mesmo SHA-256 do artefato testado: `0b7ba142b8ddbc72d6decfba63d220441c1487934b77a49fde1b9385d8772999`.
+O Build [42505562693](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42505562693) passou no commit `ff38354`: testes, JAR remapeado, auditoria server-only e fixture de smoke separado. O JAR tem 129 classes, 33 mixins e 418.031 bytes; o smoke confirmou o SHA-256 `73d68e66d65c1681473dbe8e5106191661d67fcd9aa84fbe70c6e7ad1b0712f0`. As mudanças estão no `main`; nenhuma nova release foi criada.
 
-O smoke [42496723137](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42496723137) passou com o Cobbleverse 1.7.42: instalou 168 arquivos do pack, filtrou o dedicado para 103 JARs (33 client-only omitidos), conectou um cliente sem o addon, autenticou no painel e consultou métricas. O servidor preparou a política Kanto com 3.237 arquivos sobrepostos e 1.391 equipes adaptadas. A simulação confirmou bloqueio de Johto no modo de geração única, multiplicadores de grupo/jogador e cap global. O PC foi lido ao vivo e após reinício; a validação reavaliou o store alterado; XP, limites e captura foram aplicados e descartados ao vivo. Ainda não há medição A/B em host dedicado.
+O smoke [42505819843](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42505819843) passou com o Cobbleverse 1.7.42. Instalou 168 arquivos, preparou 103 JARs para o dedicado (33 mods client-only omitidos) e conectou um cliente sem o addon. Painel, autenticação e métricas passaram. A simulação confirmou filtro de geração, multiplicadores de XP por grupo/jogador e cap global. O PC encontrou um Pikachu shiny de nível 13 ao vivo e depois da reinicialização; a validação limitada reavaliou somente o store alterado; XP, limites e captura foram aplicados e restaurados ao descartar a revisão.
 
-O próximo smoke também compila um fixture Fabric separado para conexão real, sem incluir suas classes no JAR distribuído. Com um jogador conectado, ele amostra o cálculo de captura de Poké Ball e Ultra Ball em 1×/2× e verifica chance zero e Master Ball garantida. Em uma segunda inicialização, dois jogadores ficam próximos para verificar o maior cap RCT, depois um jogador distante, bloqueio, nível inalterado e cap global no evento de spawn do Cobblemon. O fixture injeta somente progresso/caps RCT de teste; não mede um spawn natural nem fluxo de batalha.
+Na verificação do pack com Kanto ativo, o fixture inspecionou 552 entradas de spawn, 9 estruturas de ginásio carregadas e 1.714 equipes RCT. A verificação exige estruturas ativas apenas na região permitida. A captura foi amostrada 2.000 vezes por combinação: Poké Ball 11,55% em 1× e 24,8% em 2×; Ultra Ball 19,05% e 42,95%; chance zero teve zero sucessos e Master Ball permaneceu garantida. No RCT, o nível foi 35 com ambos os jogadores próximos, 20 quando o jogador com cap 35 estava distante, e os modos bloquear, manter nível 100 e limitar globalmente a 25 passaram. O fixture injeta somente progresso/caps RCT de teste; não mede spawn natural nem fluxo de batalha. Ainda falta medição A/B sob carga em host dedicado.
 
 ## Teste do pack no GitHub
 
-O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Modrinth, verifica os arquivos e inicia um servidor e um cliente Fabric em uma máquina temporária do GitHub. O JAR informado no formulário é instalado apenas no servidor. O teste usa um mundo descartável e credenciais locais. A execução `42496723137` verifica simulação de gerações/XP/cap, PC ao vivo/salvo, métricas, revalidação de store alterado e aplicação/descarte seletivos ao vivo.
+O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Modrinth, verifica os arquivos e inicia um servidor e um cliente Fabric em uma máquina temporária do GitHub. O JAR informado no formulário é instalado apenas no servidor. O teste usa um mundo descartável e credenciais locais. A execução `42505819843` cobre painel e métricas, simulação de gerações/XP/cap, PC ao vivo e salvo, validação de armazenamento, aplicação/descarte seletivos, política Kanto carregada, probabilidades de captura e evento de nível selvagem com cap RCT.
 
-Para testar mudanças ainda sem release, informe em `build_run` o ID de uma execução bem-sucedida do workflow **Build** na branch `main`. Com esse campo preenchido, o teste baixa o mod e o fixture da mesma execução. Smoke iniciado por tag de release não carrega o fixture conectado. O build `42429072403` já inclui o JAR e o helper SSH para Windows como arquivos separados.
+Para testar mudanças ainda sem release, informe em `build_run` o ID de uma execução bem-sucedida do workflow **Build** na branch `main`. Com esse campo preenchido, o teste baixa o mod e o fixture da mesma execução e executa as verificações conectadas de runtime. Smoke iniciado por tag de release não carrega esse fixture; nesse caso, painel, PC, simulação e demais etapas do pack continuam sendo verificadas, e os testes que exigem fixture são pulados.
 
 ## Alterações incorporadas em 0.5.0
 
@@ -87,15 +87,16 @@ Esse teste não validou host dedicado via SSH, carga real, migração de progres
 
 | Área | Estado | Observação |
 | --- | --- | --- |
-| Compilação e empacotamento | Build `42496572379` concluído | Testes, JAR remapeado e auditoria server-only |
-| Metadados server-only | Verificados no Build `42496572379` | `environment: server`, só entrypoint dedicado; cliente entrou sem o JAR no smoke `42496723137` |
-| Painel HTTP, token e sessão | Smoke `42496723137` observado | Login autenticado, estado e métricas no servidor temporário |
-| Regras de geração/XP/cap | Smoke `42496723137` observado | Simulação ao vivo de espécie, grupo/jogador e cap global |
-| PC dos jogadores | Smoke `42496723137` observado no pack | Consulta autenticada ao PC ao vivo e salvo após reinício |
-| Prévia de armazenamento | Smoke `42496723137` observado no pack | Reavaliou o store mudado durante a validação, preservando os demais |
-| Cliente do pack sem o addon | Smoke `42496723137` conectado em Linux | [Execução do smoke mais recente](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42496723137) |
-| Aplicação seletiva de XP, níveis e captura | Smoke `42496723137` observado | Estado aplicado ao vivo e restaurado ao descartar revisão pendente |
-| Regras de espécie/geração, XP, captura, RCT e addons | Parcial | Regras puras e controles do painel cobertos; rotas de gameplay e addons variam por evento/versão |
+| Compilação e empacotamento | Build `42505562693` concluído | Testes, JAR remapeado e auditoria server-only |
+| Metadados server-only | Verificados no Build `42505562693` | JAR server-only; cliente entrou sem o JAR no smoke `42505819843` |
+| Painel HTTP, token e sessão | Smoke `42505819843` observado | Login autenticado, estado e métricas no servidor temporário |
+| Regras de geração/XP/cap | Smoke `42505819843` observado | Simulação ao vivo de geração, XP por grupo/jogador e cap global |
+| PC dos jogadores | Smoke `42505819843` observado no pack | Consulta autenticada ao PC ao vivo e salvo após reinício |
+| Prévia de armazenamento | Smoke `42505819843` observado no pack | Reavaliou somente o store mudado durante a validação |
+| Cliente do pack sem o addon | Smoke `42505819843` conectado em Linux | [Execução do smoke mais recente](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42505819843) |
+| Aplicação seletiva de XP, níveis e captura | Smoke `42505819843` observado | Estado aplicado ao vivo e restaurado ao descartar revisão pendente |
+| Política de geração e ginásios do pack | Smoke `42505819843` observado | 552 spawns, 9 estruturas Kanto carregadas e 1.714 equipes RCT verificadas |
+| Captura e nível selvagem/RCT | Smoke `42505819843` observado | Amostras de Poké Ball/Ultra Ball e caps 20/35 em evento de spawn conectado |
 | Tailscale Serve ou túnel SSH no host de destino | Pendente | Requer host acessível pela rede privada |
 | TPS, heap e memória sob carga | Pendente | Sem benchmark A/B representativo |
 

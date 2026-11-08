@@ -647,9 +647,13 @@ def run(root):
             finish(dedicated, stop=True)
     if checked_pc:
         saved_pc_smoke(root, server, checked_pc)
-        runtime_policy_smoke(root, server)
-        connected_verification_smoke(root, server, client, installed, "capture", ["NetAdmin"])
-        connected_verification_smoke(root, server, client, installed, "wild-levels", ["NetAdmin", "NetGuest"])
+        fixtures = sorted((root / "fixtures").glob("*.jar"))
+        if fixtures:
+            runtime_policy_smoke(root, server)
+            connected_verification_smoke(root, server, client, installed, "capture", ["NetAdmin"])
+            connected_verification_smoke(root, server, client, installed, "wild-levels", ["NetAdmin", "NetGuest"])
+        else:
+            print("Skipped connected runtime checks: this release does not include the disposable verification fixture.")
 
 
 if __name__ == "__main__":

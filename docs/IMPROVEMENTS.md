@@ -1,6 +1,6 @@
 # Melhorias e estado de implementação
 
-Revisado em 08/11/2026. As mudanças abaixo estão apenas no checkout local; não foram publicadas nem medidas em um host dedicado.
+Revisado em 08/11/2026. As mudanças abaixo estão no `main` no commit `ff38354`; nenhuma nova release foi criada. Ainda não foram medidas em um host dedicado.
 
 ## Implementado neste ciclo
 
