@@ -20,10 +20,11 @@ import net.minecraft.server.MinecraftServer;
 final class IncrementalPlayerScan {
     private record FileTask(Path path,boolean nbt,boolean pc) {}
     private record Entry(Object value,boolean available,CacheWatch watch) {}
+    private record LiveSource(Iterator<Pokemon> iterator,boolean available,CacheWatch watch) {}
     private final UUID id; private final MinecraftServer server; private final GenerationRules rules;
     private final ValidationReport report; private final Set<UUID> seen=new HashSet<>(),availableSeen=new HashSet<>(),reserveSeen=new HashSet<>();
-    private final List<Entry> live=new ArrayList<>(); private final CompletableFuture<List<Entry>> offline;
-    private Iterator<Entry> liveIterator,rawIterator; private int count,restricted,available,availableRestricted,reserve;
+    private final List<LiveSource> live=new ArrayList<>(); private final CompletableFuture<List<Entry>> offline;
+    private Iterator<Entry> rawIterator; private int liveIndex,count,restricted,available,availableRestricted,reserve;
     private final java.util.function.Function<PokemonStore<?>,CacheWatch> watch;
     IncrementalPlayerScan(MinecraftServer server,GenerationRules rules,ValidationReport report,List<FileBackedPokemonStoreFactory<?>> factories,UUID id,java.util.function.Function<PokemonStore<?>,CacheWatch> watch,OfflineFileLedger ledger,java.util.function.Consumer<java.util.function.BooleanSupplier> cacheGuard) {
         this.id=id; this.server=server; this.rules=rules; this.report=report; this.watch=watch;
@@ -41,10 +42,10 @@ final class IncrementalPlayerScan {
                         return current!=null && ((StoreCacheAccessor)current).generationControl$cacheMap().get(id)==store;
                     });
                     CacheWatch mainWatch=watch.apply(store);
-                    for(Pokemon pokemon:store) live.add(new Entry(pokemon,true,mainWatch));
+                    live.add(new LiveSource(store.iterator(),true,mainWatch));
                     if(store instanceof PCStore pc) {
                         CacheWatch backupWatch=watch.apply(pc.getBackupStore());
-                        for(Pokemon pokemon:pc.getBackupStore()) live.add(new Entry(pokemon,false,backupWatch));
+                        live.add(new LiveSource(pc.getBackupStore().iterator(),false,backupWatch));
                     }
                 } else {
                     cacheGuard.accept(() -> {
@@ -55,7 +56,6 @@ final class IncrementalPlayerScan {
                 }
             }
         }
-        liveIterator=live.iterator();
         offline=CompletableFuture.supplyAsync(()-> {
             List<Entry> found=new ArrayList<>();
             try { for(FileTask task:tasks) read(task,found,ledger); }
@@ -67,7 +67,11 @@ final class IncrementalPlayerScan {
         int budget=12; long end=System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(3);
         while(budget-->0 && System.nanoTime()<end) {
             Entry entry;
-            if(liveIterator.hasNext()) entry=liveIterator.next();
+            if(liveIndex<live.size()) {
+                LiveSource source=live.get(liveIndex);
+                if(source.iterator().hasNext()) entry=new Entry(source.iterator().next(),source.available(),source.watch());
+                else { liveIndex++; continue; }
+            }
             else {
                 if(rawIterator==null) { if(!offline.isDone()) return false; rawIterator=offline.get().iterator(); }
                 if(!rawIterator.hasNext()) { finish(); return true; }

@@ -11,7 +11,8 @@
 
 - Filtragem de geração, regras de XP, limite de nível, captura e integrações de estruturas usam os eventos e hooks específicos do Cobblemon/RCT e dos addons compatíveis.
 - O callback de fim de tick retorna imediatamente quando não há validação administrativa em andamento.
-- A validação de equipes/armazenamento só inicia por solicitação e avança em lotes. A leitura de arquivos acontece fora da thread principal.
+- A validação de equipes/armazenamento só inicia por solicitação e avança em lotes. A leitura de arquivos acontece fora da thread principal; Pokémon já carregados são percorridos por iteradores, sem materializar uma cópia completa do PC na memória.
+- A análise de armazenamento processa no máximo 12 Pokémon ou 3 ms por jogador em cada tick, o que ocorrer primeiro. Uma execução maior é distribuída por vários ticks.
 - No modo de limite RCT, o evento de spawn considera jogadores próximos. A consulta termina assim que um jogador permite o nível original. Se todos tiverem um limite inferior, a regra usa o maior deles. O modo global evita a consulta.
 - O painel não faz polling contínuo do mundo e não inicia varreduras periódicas de entidades ou chunks.
 - A ponte HTTP aceita até dois pedidos pendentes ou em execução na thread do jogo. Um pedido que ainda não começou após três segundos é descartado com HTTP 503. As alterações que já começaram retornam seu resultado normal.

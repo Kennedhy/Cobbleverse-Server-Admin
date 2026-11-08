@@ -209,6 +209,46 @@ def live_pc_smoke(opener, dedicated):
     raise RuntimeError("The fixture Pokémon did not appear in the live box")
 
 
+def validation_smoke(opener):
+    with opener.open(PANEL_ADDRESS + "/api/state", timeout=8) as response:
+        state = json.load(response)
+    candidate = state["active"]
+    candidate["restrictExistingPokemon"] = not candidate["restrictExistingPokemon"]
+    payload = {
+        "action": "validate",
+        "expectedRevision": state["editRevision"],
+        "candidate": candidate,
+        "fingerprint": None,
+    }
+    request = urllib.request.Request(
+        PANEL_ADDRESS + "/api/action", json.dumps(payload).encode(),
+        {"Content-Type": "application/json", "Origin": PANEL_ADDRESS},
+    )
+    with opener.open(request, timeout=8) as response:
+        if json.load(response)["job"]["status"] not in {"running", "validated"}:
+            raise RuntimeError("Panel did not start the player-storage validation")
+
+    deadline = time.monotonic() + 240
+    while time.monotonic() < deadline:
+        with opener.open(PANEL_ADDRESS + "/api/job", timeout=8) as response:
+            job = json.load(response)["job"]
+        if job is None:
+            raise RuntimeError("Panel lost the player-storage validation job")
+        if job["status"] != "running":
+            if job["status"] != "validated":
+                raise RuntimeError(f"Player-storage validation failed: {job['message']}")
+            report = job["report"]
+            if report["inspectedPlayers"] < 1:
+                raise RuntimeError("Validation completed without scanning the connected player's storage")
+            print(
+                "Panel validation scanned the connected player's loaded storage in bounded batches "
+                f"({report['inspectedPlayers']} player(s))."
+            )
+            return
+        time.sleep(1)
+    raise RuntimeError("Player-storage validation did not finish within 240 seconds")
+
+
 def saved_pc_smoke(root, server, player_id):
     server_log = root / "server-offline-pc.log"
     with server_log.open("wb") as output:
@@ -285,6 +325,7 @@ def run(root):
                     print("Fabric client without the manager joined the dedicated server.")
                     if version >= (0, 4, 8):
                         checked_pc = live_pc_smoke(opener, dedicated)
+                        validation_smoke(opener)
                 finally:
                     finish(player)
             if checked_pc:
