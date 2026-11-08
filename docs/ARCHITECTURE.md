@@ -2,7 +2,7 @@
 
 ## Limites do projeto
 
-- O Fabric carrega o mod apenas no servidor dedicado (`environment: server`). Não há entrypoint nem interface de configuração no cliente.
+- O Fabric carrega o mod apenas no servidor dedicado (`environment: server`). Não há entrypoint nem interface de configuração no cliente. O Build verifica o JAR remapeado para impedir entrypoints/mixins/classes de cliente e confirmar que os assets web estão incluídos.
 - React/Vite geram arquivos estáticos empacotados no JAR. A JVM do servidor não carrega Node, React ou um servidor web externo.
 - O painel usa o `HttpServer` do JDK, escuta em loopback e delega a no máximo dois workers com fila limitada. Usa token, sessão, validação de origem e sem CORS.
 - As regras e revisões são arquivos no diretório de dados do mundo; não há banco de dados ou serviço externo.
