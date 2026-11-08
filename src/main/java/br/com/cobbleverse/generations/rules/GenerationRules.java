@@ -40,7 +40,7 @@ public final class GenerationRules {
         return speciesAllowedKey(speciesKey(species), dex);
     }
 
-    public boolean allowed(String species, int dex, String form, Set<String> aspects) {
+    public boolean allowed(String species, int dex, String form, Iterable<String> aspects) {
         String speciesId = speciesKey(species);
         if (!speciesAllowedKey(speciesId, dex)) return false;
         String normalizedForm = FormNames.canonical(form);

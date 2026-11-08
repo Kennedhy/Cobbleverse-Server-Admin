@@ -17,6 +17,7 @@ O painel escuta em `127.0.0.1`. Você pode entrar por um endereço HTTPS privado
 
 1. Instale o Tailscale na máquina dedicada e no computador administrador. Conecte os dois à mesma tailnet e permita o acesso ao nó do servidor apenas para administradores.
 2. Ative certificados HTTPS para a tailnet. Se o Serve mostrar uma URL de consentimento, abra-a no computador administrador e conclua a ativação. As regras de acesso da tailnet também se aplicam ao painel.
+   O nome DNS do nó e da tailnet pode aparecer em logs públicos de transparência de certificados; use nomes genéricos que não revelem dados pessoais.
 3. Na máquina do Minecraft, com o painel em execução, publique a porta local na tailnet:
 
    ```sh
@@ -30,7 +31,7 @@ O painel escuta em `127.0.0.1`. Você pode entrar por um endereço HTTPS privado
    httpsOrigin=https://cobbleverse.exemplo.ts.net
    ```
 
-4. Reinicie o Minecraft. No computador administrador, conectado à mesma tailnet, abra essa URL e informe o token. Leia o arquivo do token por SSH/SFTP ou use o helper PowerShell abaixo.
+5. Reinicie o Minecraft. No computador administrador, conectado à mesma tailnet, abra essa URL e informe o token. Leia o arquivo do token por SSH/SFTP ou use o helper PowerShell abaixo.
 
 O Serve fornece HTTPS dentro da tailnet. Não ative Tailscale Funnel para este painel. Consulte os requisitos de [HTTPS e acesso à tailnet](https://tailscale.com/docs/features/tailscale-serve) e a [referência atual do comando](https://tailscale.com/docs/reference/tailscale-cli/serve).
 

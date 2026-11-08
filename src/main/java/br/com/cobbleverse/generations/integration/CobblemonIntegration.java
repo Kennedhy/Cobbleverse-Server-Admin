@@ -95,9 +95,9 @@ public final class CobblemonIntegration {
         if (form == null) form = species.getForm(explicitAspects).getName();
         else {
             String expected=br.com.cobbleverse.generations.rules.FormNames.canonical(form);
-            var resolved=formsOf(species).stream().filter(f -> br.com.cobbleverse.generations.rules.FormNames.canonical(f.getName()).equals(expected)).findFirst();
-            if(resolved.isEmpty()) return false;
-            form=resolved.get().getName();
+            String resolved=matchingForm(species,expected);
+            if(resolved==null) return false;
+            form=resolved;
         }
         return GenerationControl.rules().allowed(species.getResourceIdentifier().toString(), species.getNationalPokedexNumber(), form, explicitAspects);
     }
@@ -110,10 +110,6 @@ public final class CobblemonIntegration {
     public static net.minecraft.text.MutableText blockMessage() { return Text.literal("Este Pokémon ou forma está bloqueado pelas gerações do servidor."); }
     public static void tellOwner(Pokemon pokemon) {
         if (pokemon.getOwnerPlayer() != null) pokemon.getOwnerPlayer().sendMessage(blockMessage());
-    }
-
-    private static java.util.List<com.cobblemon.mod.common.pokemon.FormData> formsOf(Species species) {
-        return java.util.stream.Stream.concat(java.util.stream.Stream.of(species.getStandardForm()),species.getForms().stream()).toList();
     }
 
     public static ValidationReport validateRegistries(GenerationConfig candidate) {
@@ -129,7 +125,7 @@ public final class CobblemonIntegration {
                 instanceof com.cobblemon.mod.common.pokeball.catching.calculators.CobblemonCaptureCalculator))
             report.errors.add("O multiplicador de captura requer o calculador padrão do Cobblemon.");
         for (Species species : PokemonSpecies.getSpecies())
-            if (species.getImplemented() && formsOf(species).stream().anyMatch(form -> rules.allowed(species.getResourceIdentifier().toString(),species.getNationalPokedexNumber(),form.getName(),new HashSet<>(form.getAspects())))) report.allowedSpecies++;
+            if (species.getImplemented() && hasAllowedForm(species,rules)) report.allowedSpecies++;
         if (report.allowedSpecies == 0) report.errors.add("Nenhuma espécie ou forma implementada disponível com esta seleção.");
         for (String exception : rules.config().allowSpecies) {
             var entry=species(exception);
@@ -139,8 +135,28 @@ public final class CobblemonIntegration {
         Set<String> forms=new TreeSet<>(rules.config().allowForms); forms.addAll(rules.config().denyForms);
         for(String exception:forms) {
             int split=exception.indexOf('/'); var entry=species(exception.substring(0,split)); String form=exception.substring(split+1);
-            if(entry==null || formsOf(entry).stream().noneMatch(f -> br.com.cobbleverse.generations.rules.FormNames.canonical(f.getName()).equals(form))) report.errors.add("Forma desconhecida: "+exception);
+            if(entry==null || !hasForm(entry,form)) report.errors.add("Forma desconhecida: "+exception);
         }
+    }
+
+    private static boolean hasAllowedForm(Species species,GenerationRules rules) {
+        String id=species.getResourceIdentifier().toString(); int dex=species.getNationalPokedexNumber();
+        var standard=species.getStandardForm();
+        if(rules.allowed(id,dex,standard.getName(),standard.getAspects())) return true;
+        for(var form:species.getForms()) if(rules.allowed(id,dex,form.getName(),form.getAspects())) return true;
+        return false;
+    }
+
+    private static boolean hasForm(Species species,String canonical) {
+        return matchingForm(species,canonical)!=null;
+    }
+
+    private static String matchingForm(Species species,String canonical) {
+        var standard=species.getStandardForm();
+        if(br.com.cobbleverse.generations.rules.FormNames.canonical(standard.getName()).equals(canonical)) return standard.getName();
+        for(var form:species.getForms())
+            if(br.com.cobbleverse.generations.rules.FormNames.canonical(form.getName()).equals(canonical)) return form.getName();
+        return null;
     }
 
     public static ValidationReport validate(GenerationConfig candidate) { return validate(candidate,true,true); }
