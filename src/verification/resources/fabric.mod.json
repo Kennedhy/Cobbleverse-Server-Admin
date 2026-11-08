@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "generation_control_smoke",
+  "version": "1.0.0",
+  "name": "Generation Control Runtime Smoke Fixture",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "br.com.cobbleverse.generations.verification.ConnectedVerificationEntrypoint"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.18.4",
+    "minecraft": "~1.21.1",
+    "generation_control": "*"
+  }
+}

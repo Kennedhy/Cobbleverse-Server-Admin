@@ -73,6 +73,40 @@ sourceSets {
             srcDir layout.buildDirectory.dir('generated/resources/main')
         }
     }
+    verification {
+        java {
+            srcDir 'src/main/java'
+            include 'br/com/cobbleverse/generations/verification/ConnectedCaptureVerification.java'
+            include 'br/com/cobbleverse/generations/verification/ConnectedWildLevelsVerification.java'
+            include 'br/com/cobbleverse/generations/verification/ConnectedVerificationEntrypoint.java'
+        }
+        resources.srcDirs = ['src/verification/resources']
+        // Compile fixtures against the same mapped Minecraft and mod APIs as the production code.
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+    }
+}
+
+tasks.register('verificationDevJar', Jar) {
+    dependsOn tasks.named('verificationClasses')
+    archiveBaseName = 'cobbleverse-generation-control-smoke-fixture'
+    archiveVersion = project.version
+    archiveClassifier = 'dev'
+    destinationDirectory = layout.buildDirectory.dir('tmp/verification')
+    from sourceSets.verification.output
+}
+
+tasks.register('remapVerificationJar', net.fabricmc.loom.task.RemapJarTask) {
+    group = 'build'
+    description = 'Builds a disposable, server-only Fabric fixture for connected runtime smoke checks.'
+    dependsOn tasks.named('verificationDevJar')
+    inputFile.set(tasks.named('verificationDevJar', Jar).flatMap { it.archiveFile })
+    archiveBaseName = 'cobbleverse-generation-control-smoke-fixture'
+    archiveVersion = project.version
+    archiveClassifier = ''
+    destinationDirectory = layout.buildDirectory.dir('verification')
+    sourceNamespace.set('named')
+    targetNamespace.set('intermediary')
+    classpath.from(sourceSets.verification.compileClasspath)
 }
 
 def webDirectory = file('web')

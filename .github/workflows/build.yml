@@ -37,7 +37,7 @@ jobs:
       - name: Install web build dependencies
         run: npm ci --prefix web
       - name: Test and build server mod
-        run: ./gradlew --no-daemon --max-workers=1 test remapJar
+        run: ./gradlew --no-daemon --max-workers=1 test remapJar remapVerificationJar
       - name: Verify server-only artifact
         run: |
           version=$(sed -n 's/^mod_version=//p' gradle.properties)
@@ -52,5 +52,11 @@ jobs:
             build/libs/cobbleverse-generation-control-*.jar
             build/libs/open-admin-tunnel.ps1
             build/libs/prepare_server_mods.py
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cobbleverse-smoke-fixture-${{ github.sha }}
+          path: build/verification/cobbleverse-generation-control-smoke-fixture-*.jar
           if-no-files-found: error
           retention-days: 14

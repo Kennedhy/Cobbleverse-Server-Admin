@@ -8,11 +8,13 @@ O Build [42496572379](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actio
 
 O smoke [42496723137](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42496723137) passou com o Cobbleverse 1.7.42: instalou 168 arquivos do pack, filtrou o dedicado para 103 JARs (33 client-only omitidos), conectou um cliente sem o addon, autenticou no painel e consultou métricas. O servidor preparou a política Kanto com 3.237 arquivos sobrepostos e 1.391 equipes adaptadas. A simulação confirmou bloqueio de Johto no modo de geração única, multiplicadores de grupo/jogador e cap global. O PC foi lido ao vivo e após reinício; a validação reavaliou o store alterado; XP, limites e captura foram aplicados e descartados ao vivo. Ainda não há medição A/B em host dedicado.
 
+O próximo smoke também compila um fixture Fabric separado para conexão real, sem incluir suas classes no JAR distribuído. Com um jogador conectado, ele amostra o cálculo de captura de Poké Ball e Ultra Ball em 1×/2× e verifica chance zero e Master Ball garantida. Em uma segunda inicialização, dois jogadores ficam próximos para verificar o maior cap RCT, depois um jogador distante, bloqueio, nível inalterado e cap global no evento de spawn do Cobblemon. O fixture injeta somente progresso/caps RCT de teste; não mede um spawn natural nem fluxo de batalha.
+
 ## Teste do pack no GitHub
 
 O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Modrinth, verifica os arquivos e inicia um servidor e um cliente Fabric em uma máquina temporária do GitHub. O JAR informado no formulário é instalado apenas no servidor. O teste usa um mundo descartável e credenciais locais. A execução `42496723137` verifica simulação de gerações/XP/cap, PC ao vivo/salvo, métricas, revalidação de store alterado e aplicação/descarte seletivos ao vivo.
 
-Para testar mudanças ainda sem release, informe em `build_run` o ID de uma execução bem-sucedida do workflow **Build** na branch `main`. Com esse campo preenchido, o teste usa o artefato da compilação. O build `42429072403` já inclui o JAR e o helper SSH para Windows como arquivos separados.
+Para testar mudanças ainda sem release, informe em `build_run` o ID de uma execução bem-sucedida do workflow **Build** na branch `main`. Com esse campo preenchido, o teste baixa o mod e o fixture da mesma execução. Smoke iniciado por tag de release não carrega o fixture conectado. O build `42429072403` já inclui o JAR e o helper SSH para Windows como arquivos separados.
 
 ## Alterações incorporadas em 0.5.0
 

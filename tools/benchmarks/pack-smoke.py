@@ -4,6 +4,7 @@ import concurrent.futures
 import hashlib
 import http.cookiejar
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -181,11 +182,37 @@ def finish(process, stop=False):
             process.wait()
 
 
-def start_server(server, output):
+def start_server(server, output, memory="3G", verification=None):
+    args = ["java", f"-Xmx{memory}", "-XX:ActiveProcessorCount=2"]
+    if verification:
+        args.append(f"-Dgenerationcontrol.verification={verification}")
+    args.extend(["-jar", "fabric-server.jar", "nogui"])
     return subprocess.Popen(
-        ["java", "-Xmx3G", "-XX:ActiveProcessorCount=2", "-jar", "fabric-server.jar", "nogui"],
+        args,
         cwd=server, stdin=subprocess.PIPE, stdout=output, stderr=subprocess.STDOUT,
     )
+
+
+def offline_player_uuid(username):
+    # Match Minecraft's offline-mode UUID algorithm for server-side player fixtures.
+    raw = bytearray(hashlib.md5(f"OfflinePlayer:{username}".encode("utf-8")).digest())
+    raw[6] = (raw[6] & 0x0F) | 0x30
+    raw[8] = (raw[8] & 0x3F) | 0x80
+    return raw.hex()
+
+
+def client_command(installed, client, username, memory="4G", player_uuid=None):
+    return command.get_minecraft_command(installed, client, {
+        "username": username,
+        "uuid": player_uuid or offline_player_uuid(username),
+        "token": "0",
+        "executablePath": "java",
+        "jvmArguments": [f"-Xmx{memory}", "-XX:ActiveProcessorCount=2"],
+        "quickPlayMultiplayer": GAME_ADDRESS,
+        "customResolution": True,
+        "resolutionWidth": "960",
+        "resolutionHeight": "540",
+    })
 
 
 def api(opener, path, **params):
@@ -431,6 +458,72 @@ def saved_pc_smoke(root, server, player_id):
             finish(dedicated, stop=True)
 
 
+def hardlink_or_copy(source, destination):
+    try:
+        os.link(source, destination)
+    except OSError:
+        shutil.copy2(source, destination)
+
+
+def connected_verification_smoke(root, server, client, installed, mode, usernames):
+    fixtures = sorted((root / "fixtures").glob("*.jar"))
+    if not fixtures:
+        print("Connected gameplay fixture was not supplied by this build; connected checks skipped.")
+        return
+    if len(fixtures) != 1:
+        raise RuntimeError(f"Expected one connected gameplay fixture, found {len(fixtures)}")
+    shutil.copy2(fixtures[0], server / "mods" / fixtures[0].name)
+
+    result_path = server / f"connected-{mode}-result.json"
+    result_path.unlink(missing_ok=True)
+    server_log = root / f"server-{mode}.log"
+    clients = []
+    client_dirs = []
+    for index, username in enumerate(usernames):
+        if index == 0:
+            game_dir = client
+        else:
+            game_dir = root / f"client-{username}"
+            if not game_dir.exists():
+                shutil.copytree(client, game_dir, copy_function=hardlink_or_copy)
+            for log in (game_dir / "logs").glob("*.log"):
+                log.unlink(missing_ok=True)
+        client_dirs.append(game_dir)
+
+    with server_log.open("wb") as output:
+        dedicated = start_server(server, output, memory="2G", verification=mode)
+        try:
+            wait_for(dedicated, server_log, "Painel web local:", 360)
+            for username, game_dir in zip(usernames, client_dirs):
+                log_path = root / f"{mode}-{username}-client.log"
+                with log_path.open("wb") as log:
+                    player = subprocess.Popen(
+                        client_command(installed, game_dir, username, memory="3G"),
+                        cwd=game_dir, stdout=log, stderr=subprocess.STDOUT,
+                    )
+                clients.append(player)
+            for username in usernames:
+                wait_for(dedicated, server_log, f"{username} joined the game", 360)
+
+            deadline = time.monotonic() + 300
+            while time.monotonic() < deadline and not result_path.is_file():
+                if dedicated.poll() is not None:
+                    break
+                time.sleep(1)
+            if not result_path.is_file():
+                raise RuntimeError(
+                    f"Connected {mode} verification produced no result; server exit: {dedicated.poll()}"
+                )
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+            if not result.get("success"):
+                raise RuntimeError(f"Connected {mode} verification failed: {result}")
+            print(f"Connected {mode} verification passed: {result}")
+        finally:
+            for player in clients:
+                finish(player)
+            finish(dedicated, stop=True)
+
+
 def run(root):
     server, client = root / "server", root / "client"
     server.mkdir()
@@ -469,12 +562,9 @@ def run(root):
 
     loader = mod_loader.get_mod_loader("fabric")
     installed = loader.install("1.21.1", client, loader_version="0.18.4")
-    args = command.get_minecraft_command(installed, client, {
-        "username": PLAYER, "uuid": "3d0bbb3880e33a3d9a1384995b87f05a", "token": "0",
-        "executablePath": "java", "jvmArguments": ["-Xmx4G", "-XX:ActiveProcessorCount=2"],
-        "quickPlayMultiplayer": GAME_ADDRESS,
-        "customResolution": True, "resolutionWidth": "960", "resolutionHeight": "540",
-    })
+    args = client_command(
+        installed, client, PLAYER, memory="4G", player_uuid="3d0bbb3880e33a3d9a1384995b87f05a"
+    )
     server_log = root / "server.log"
     checked_pc = None
     with server_log.open("wb") as output:
@@ -501,6 +591,8 @@ def run(root):
             finish(dedicated, stop=True)
     if checked_pc:
         saved_pc_smoke(root, server, checked_pc)
+        connected_verification_smoke(root, server, client, installed, "capture", ["NetAdmin"])
+        connected_verification_smoke(root, server, client, installed, "wild-levels", ["NetAdmin", "NetGuest"])
 
 
 if __name__ == "__main__":

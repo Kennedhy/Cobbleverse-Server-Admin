@@ -47,6 +47,8 @@ def verify(jar_path: Path):
             mixin_classes += len(declared)
 
         class_files = [name for name in names if name.endswith(".class")]
+        if any(name.startswith("br/com/cobbleverse/generations/verification/") for name in class_files):
+            raise ValueError("The production JAR must not contain disposable verification fixtures.")
         if any("/client/" in f"/{name.lower()}" for name in class_files):
             raise ValueError("The JAR contains a class in a client package.")
         for name in class_files:
