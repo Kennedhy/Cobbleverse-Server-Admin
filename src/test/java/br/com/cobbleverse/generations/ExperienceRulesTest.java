@@ -44,7 +44,7 @@ class ExperienceRulesTest {
         assertTrue(ExperienceRules.controlsWildLevels(c));
         c.wildLevelBehavior="block"; assertTrue(ExperienceRules.controlsWildLevels(c));
         c.wildLevelBehavior="unchanged"; assertFalse(ExperienceRules.controlsWildLevels(c));
-        assertFalse(ExperienceRules.controlsWildLevels(null));
+        assertFalse(ExperienceRules.controlsWildLevels((GenerationConfig) null));
     }
 
 }
