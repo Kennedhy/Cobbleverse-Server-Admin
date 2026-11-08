@@ -10,8 +10,8 @@ Para testar mudanças ainda sem release, informe em `build_run` o ID de uma exec
 
 ## Alterações após 0.4.8 (sem nova release)
 
-- O build `42429072403` passou por testes e empacotamento. O artefato contém `cobbleverse-generation-control-0.4.8.jar` e `open-admin-tunnel.ps1` separados. O JAR foi verificado como server-only: ambiente `server`, somente entrypoint de servidor, 99 classes e nenhuma classe cliente; os cinco recursos web estão empacotados. [Execução do Build](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42429072403).
-- O smoke test usou esse JAR no servidor dedicado temporário, subiu o Cobbleverse 1.7.42, autenticou no painel, conectou um cliente do pack sem o gerenciador e verificou o PC ao vivo e depois de reiniciar o servidor. O Pokémon de fixture foi encontrado em ambos os estados. [Execução e logs](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42429289309).
+- O build `42429811203` passou por testes e empacotamento. O artefato contém `cobbleverse-generation-control-0.4.8.jar` e `open-admin-tunnel.ps1` separados. O JAR foi inspecionado: ambiente `server`, somente entrypoint de servidor, 99 classes, nenhuma classe cliente e três arquivos web (`index.html`, CSS e JavaScript). [Execução do Build](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42429811203).
+- O smoke test do mesmo código, com o JAR do build `42429072403`, subiu o Cobbleverse 1.7.42 em um servidor dedicado temporário, autenticou no painel, conectou um cliente do pack sem o gerenciador e verificou o PC ao vivo e depois de reiniciar o servidor. O Pokémon de fixture foi encontrado nos dois estados. [Execução e logs](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42429289309).
 - Estes resultados validam o pack de referência em runners temporários do GitHub. Não medem acesso ao host dedicado final, MSPT/TPS sob carga representativa, nem desempenho A/B.
 
 ## Versão 0.4.8
