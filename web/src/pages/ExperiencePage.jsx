@@ -11,15 +11,27 @@ const wildModes = [
 ];
 
 function GroupEditor({ draft, update }) {
+  const [error, setError] = useState('');
   const groups = Object.entries(draft.groupXpMultipliers || {}).sort(([a], [b]) => a.localeCompare(b));
   const countPlayers = (name) => Object.values(draft.playerXpGroups || {}).filter((group) => group === name).length;
   const rename = (oldName, rawName, multiplier) => {
     const name = rawName.trim().toLowerCase();
+    if (!/^[a-z0-9_.-]{1,48}$/.test(name)) {
+      setError('Use de 1 a 48 letras minúsculas, números, ponto, hífen ou sublinhado no nome do grupo.');
+      return false;
+    }
+    if (name === oldName) { setError(''); return true; }
+    if (Object.hasOwn(draft.groupXpMultipliers || {}, name)) {
+      setError(`O grupo “${name}” já existe. Escolha outro nome para manter as regras e os jogadores separados.`);
+      return false;
+    }
     const values = { ...draft.groupXpMultipliers };
     delete values[oldName];
     values[name] = multiplier;
     const playerXpGroups = Object.fromEntries(Object.entries(draft.playerXpGroups || {}).map(([uuid, group]) => [uuid, group === oldName ? name : group]));
     update({ groupXpMultipliers: values, playerXpGroups });
+    setError('');
+    return true;
   };
   const changeMultiplier = (name, value) => update({ groupXpMultipliers: { ...draft.groupXpMultipliers, [name]: value } });
   const remove = (name) => {
@@ -35,6 +47,7 @@ function GroupEditor({ draft, update }) {
   };
   return <>
     <div className="section-toolbar"><span>Crie grupos próprios e ajuste o multiplicador de cada um.</span><button className="button button-quiet button-small" type="button" onClick={add}><Plus size={15} />Adicionar grupo</button></div>
+    {error && <Notice tone="error">{error}</Notice>}
     <div className="table-wrap">
       <table>
         <thead><tr><th>Grupo</th><th>Multiplicador</th><th>Jogadores</th><th aria-label="Ações" /></tr></thead>

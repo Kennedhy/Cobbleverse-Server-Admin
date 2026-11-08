@@ -66,7 +66,10 @@ export function CommitTextInput({ value, onCommit, ...props }) {
   const editing = useRef(false);
   useEffect(() => { if (!editing.current) setText(value ?? ''); }, [value]);
   return <input {...props} type="text" value={text} onFocus={() => { editing.current = true; }}
-    onChange={(event) => setText(event.target.value)} onBlur={() => { editing.current = false; onCommit(text); }} />;
+    onChange={(event) => setText(event.target.value)} onBlur={() => {
+      editing.current = false;
+      if (onCommit(text) === false) setText(value ?? '');
+    }} />;
 }
 
 export function SelectField({ label, value, options, onChange, hint, disabled = false }) {

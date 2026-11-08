@@ -2,6 +2,10 @@
 
 Notable changes for each release are recorded here. Versions follow `MAJOR.MINOR.PATCH` and are tagged as `vX.Y.Z`.
 
+## [Unreleased]
+
+- Prevent XP group renames from overwriting an existing group and silently reassigning players.
+
 ## [0.4.8] — Preview
 
 - Added a read-only player PC page with player search, box navigation, species, form, level, and shiny status.
