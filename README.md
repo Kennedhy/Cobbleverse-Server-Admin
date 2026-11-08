@@ -39,7 +39,7 @@ As integrações de raids, megaevoluções e spawns de outros mods dependem das 
 ## Instalação no servidor
 
 1. Faça backup e valide o addon em uma cópia do servidor e do mundo.
-2. Baixe o JAR na página de [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases). As próximas releases também terão `open-admin-tunnel.ps1` e `prepare_server_mods.py` como ferramentas separadas. Se uma release antiga não tiver esses arquivos, obtenha o código-fonte da mesma versão.
+2. Baixe o JAR e os utilitários `open-admin-tunnel.ps1` e `prepare_server_mods.py` na página de [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases). Releases antigas podem não incluir esses arquivos; nesse caso, obtenha-os no código-fonte da mesma versão.
 3. Coloque o JAR somente na pasta `mods/` do servidor Fabric. Não o instale nos clientes.
 4. Inicie o servidor e, como administrador, execute `/geracoes web` para ver os caminhos das credenciais compartilhadas iniciais.
 5. No computador do servidor, abra `http://127.0.0.1:8765` e use o token de administrador inicial. Em **Acessos**, crie um token individual para cada pessoa e revogue os compartilhados quando não forem mais necessários. O token de consulta pode ver estado, PCs, histórico, exportar e usar o simulador; somente administradores podem alterar configurações ou acessos. Para acesso remoto, configure HTTPS privado ou um túnel SSH. Veja [Administração do painel](docs/ADMIN.md).
