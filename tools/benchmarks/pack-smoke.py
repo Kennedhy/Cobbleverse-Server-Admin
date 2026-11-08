@@ -525,6 +525,61 @@ def connected_verification_smoke(root, server, client, installed, mode, username
             finish(dedicated, stop=True)
 
 
+def runtime_policy_smoke(root, server):
+    fixtures = sorted((root / "fixtures").glob("*.jar"))
+    if len(fixtures) != 1:
+        raise RuntimeError(f"Expected one runtime verification fixture, found {len(fixtures)}")
+    shutil.copy2(fixtures[0], server / "mods" / fixtures[0].name)
+
+    active_path = server / "smoke-world" / "generation-control" / "active.json"
+    if not active_path.is_file():
+        raise RuntimeError("The initial smoke server did not create its active generation policy")
+    if (active_path.parent / "pending.json").exists():
+        raise RuntimeError("Runtime policy smoke cannot start with a pending configuration")
+    active = json.loads(active_path.read_text(encoding="utf-8"))
+    active.update({
+        "mode": "single",
+        "selectedGeneration": 1,
+        "generations": [1],
+        "automaticRegions": True,
+        "regions": ["kanto"],
+        "initialRegion": "kanto",
+        "regionalForms": False,
+        "megaEvolutions": False,
+        "restrictExistingPokemon": True,
+        "filterGyms": True,
+        "filterTrainerTeams": True,
+    })
+    active_path.write_text(json.dumps(active, indent=2) + "\n", encoding="utf-8")
+
+    result_path = server / "runtime-policy-result.json"
+    result_path.unlink(missing_ok=True)
+    server_log = root / "server-runtime-policy.log"
+    with server_log.open("wb") as output:
+        dedicated = start_server(server, output, memory="3G", verification="runtime-policy")
+        try:
+            wait_for(dedicated, server_log, "Painel web local:", 360)
+            deadline = time.monotonic() + 300
+            while time.monotonic() < deadline and not result_path.is_file():
+                if dedicated.poll() is not None:
+                    break
+                time.sleep(0.5)
+            if not result_path.is_file():
+                raise RuntimeError(f"Runtime policy verification wrote no result; server exit: {dedicated.poll()}")
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+            if not result.get("success"):
+                raise RuntimeError(f"Runtime generation/gym policy verification failed: {result}")
+            report = result["verification"]
+            print(
+                "Runtime Kanto policy passed against loaded pack resources: "
+                f"{report['spawnEntriesInspected']} spawn entries, "
+                f"{report['gymStructuresInspected']} gym structures, "
+                f"{report['trainerTeamsInspected']} RCT trainer teams."
+            )
+        finally:
+            finish(dedicated, stop=True)
+
+
 def run(root):
     server, client = root / "server", root / "client"
     server.mkdir()
@@ -592,6 +647,7 @@ def run(root):
             finish(dedicated, stop=True)
     if checked_pc:
         saved_pc_smoke(root, server, checked_pc)
+        runtime_policy_smoke(root, server)
         connected_verification_smoke(root, server, client, installed, "capture", ["NetAdmin"])
         connected_verification_smoke(root, server, client, installed, "wild-levels", ["NetAdmin", "NetGuest"])
 

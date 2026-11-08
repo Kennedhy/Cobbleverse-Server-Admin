@@ -2,6 +2,7 @@ package br.com.cobbleverse.generations.verification;
 
 import br.com.cobbleverse.generations.GenerationControl;
 import br.com.cobbleverse.generations.config.ConfigStore;
+import br.com.cobbleverse.generations.data.GymStructures;
 import br.com.cobbleverse.generations.integration.CobblemonIntegration;
 import com.cobblemon.mod.common.api.events.CobblemonEvents;
 import com.cobblemon.mod.common.api.events.pokemon.PokemonSentEvent;
@@ -12,7 +13,6 @@ import com.gitlab.srcmc.rctmod.api.RCTMod;
 import com.google.gson.*;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.Identifier;
 import net.minecraft.util.math.Vec3d;
 import java.time.Instant;
 import java.util.*;
@@ -105,10 +105,17 @@ public final class RuntimeVerification {
         });
         detail.put("trainerTeamsInspected",teams[0]);
         var structures = server.getRegistryManager().get(RegistryKeys.STRUCTURE);
-        for (String gym : List.of("brock","misty","ltsurge","erika","koga","sabrina","blaine","giovanni","kanto_league")) {
-            var structure = structures.get(Identifier.of("cobbleverse",gym));
-            if (structure != null && rules.filterGyms()) check("worldgen: "+gym, (structure.getValidBiomes().size() > 0) == rules.regionAllowed("kanto"),passed,failed);
+        int gymStructuresInspected=0;
+        if(rules.filterGyms()) for(var entry:server.getResourceManager().findResources("worldgen/structure",
+                id -> id.getNamespace().equals("cobbleverse") && id.getPath().endsWith(".json")).entrySet()) {
+            String region=GymStructures.region(entry.getKey().getPath());
+            if(region==null) continue;
+            gymStructuresInspected++;
+            var structure=structures.get(entry.getKey());
+            check("worldgen: "+entry.getKey(),structure!=null
+                    && (structure.getValidBiomes().size()>0)==rules.regionAllowed(region),passed,failed);
         }
+        detail.put("gymStructuresInspected",gymStructuresInspected);
         if (net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("cobbreeding")) {
             var babies = br.com.cobbleverse.generations.integration.BreedingGuard.allowedBabies();
             check("breeding: allowed random babies available", !babies.isEmpty(),passed,failed);

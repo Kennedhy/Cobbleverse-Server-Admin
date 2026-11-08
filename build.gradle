@@ -79,6 +79,9 @@ sourceSets {
             include 'br/com/cobbleverse/generations/verification/ConnectedCaptureVerification.java'
             include 'br/com/cobbleverse/generations/verification/ConnectedWildLevelsVerification.java'
             include 'br/com/cobbleverse/generations/verification/ConnectedVerificationEntrypoint.java'
+            include 'br/com/cobbleverse/generations/verification/PlayerRuntimeChecks.java'
+            include 'br/com/cobbleverse/generations/verification/RuntimeVerification.java'
+            include 'br/com/cobbleverse/generations/verification/RuntimePolicyVerificationEntrypoint.java'
         }
         resources.srcDirs = ['src/verification/resources']
         // Compile fixtures against the same mapped Minecraft and mod APIs as the production code.
