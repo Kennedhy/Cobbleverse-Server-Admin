@@ -4,13 +4,13 @@ O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este doc
 
 ## Build 0.5.0
 
-O Build [42494925290](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42494925290) passou no commit `c17dc02`: testes, JAR remapeado, auditoria server-only e nome do pacote web alinhado à versão 0.5.0. A versão inclui aplicação ao vivo seletiva de XP/limites/captura, reavaliação de store alterado durante a prévia e métricas sob demanda de TPS estimado, CPU Java e GC. A deduplicação entre party, PC e reserva é mantida com snapshots temporários limitados.
+O Build [42496572379](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42496572379) passou no commit `1aac404`: testes, JAR remapeado, auditoria server-only e pacote web identificado como 0.5.0. A versão inclui aplicação ao vivo seletiva de XP/limites/captura, reavaliação de store alterado durante a prévia e métricas sob demanda de TPS estimado, CPU Java e GC. A deduplicação entre party, PC e reserva é mantida com snapshots temporários limitados. O JAR da release tem o mesmo SHA-256 do artefato testado: `0b7ba142b8ddbc72d6decfba63d220441c1487934b77a49fde1b9385d8772999`.
 
-O smoke [42495377408](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42495377408) passou com o Cobbleverse 1.7.42: instalou 168 arquivos do pack, filtrou o dedicado para 103 JARs (33 client-only omitidos), conectou um cliente sem o addon, autenticou no painel, consultou métricas, leu um PC ao vivo e após reiniciar, reavaliou o store alterado durante a validação e aplicou/descartou XP, limites e captura ao vivo. Ainda não há medição A/B em host dedicado.
+O smoke [42496723137](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42496723137) passou com o Cobbleverse 1.7.42: instalou 168 arquivos do pack, filtrou o dedicado para 103 JARs (33 client-only omitidos), conectou um cliente sem o addon, autenticou no painel e consultou métricas. O servidor preparou a política Kanto com 3.237 arquivos sobrepostos e 1.391 equipes adaptadas. A simulação confirmou bloqueio de Johto no modo de geração única, multiplicadores de grupo/jogador e cap global. O PC foi lido ao vivo e após reinício; a validação reavaliou o store alterado; XP, limites e captura foram aplicados e descartados ao vivo. Ainda não há medição A/B em host dedicado.
 
 ## Teste do pack no GitHub
 
-O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Modrinth, verifica os arquivos e inicia um servidor e um cliente Fabric em uma máquina temporária do GitHub. O JAR informado no formulário é instalado apenas no servidor. O teste usa um mundo descartável e credenciais locais. A execução `42495377408` verificou PC ao vivo/salvo, métricas, revalidação de store alterado e aplicação/descarte seletivos ao vivo.
+O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Modrinth, verifica os arquivos e inicia um servidor e um cliente Fabric em uma máquina temporária do GitHub. O JAR informado no formulário é instalado apenas no servidor. O teste usa um mundo descartável e credenciais locais. A execução `42496723137` verifica simulação de gerações/XP/cap, PC ao vivo/salvo, métricas, revalidação de store alterado e aplicação/descarte seletivos ao vivo.
 
 Para testar mudanças ainda sem release, informe em `build_run` o ID de uma execução bem-sucedida do workflow **Build** na branch `main`. Com esse campo preenchido, o teste usa o artefato da compilação. O build `42429072403` já inclui o JAR e o helper SSH para Windows como arquivos separados.
 
@@ -85,13 +85,14 @@ Esse teste não validou host dedicado via SSH, carga real, migração de progres
 
 | Área | Estado | Observação |
 | --- | --- | --- |
-| Compilação e empacotamento | Build `42494925290` concluído | Testes, JAR remapeado e auditoria server-only |
-| Metadados server-only | Verificados no Build `42494925290` | `environment: server`, só entrypoint dedicado; cliente entrou sem o JAR no smoke `42495377408` |
-| Painel HTTP, token e sessão | Smoke `42495377408` observado | Login autenticado, estado e métricas no servidor temporário |
-| PC dos jogadores | Smoke `42495377408` observado no pack | Consulta autenticada ao PC ao vivo e salvo após reinício |
-| Prévia de armazenamento | Smoke `42495377408` observado no pack | Reavaliou o store mudado durante a validação, preservando os demais |
-| Cliente do pack sem o addon | Smoke `42495377408` conectado em Linux | [Execução do smoke mais recente](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42495377408) |
-| Aplicação seletiva de XP, níveis e captura | Smoke `42495377408` observado | Estado aplicado ao vivo e restaurado ao descartar revisão pendente |
+| Compilação e empacotamento | Build `42496572379` concluído | Testes, JAR remapeado e auditoria server-only |
+| Metadados server-only | Verificados no Build `42496572379` | `environment: server`, só entrypoint dedicado; cliente entrou sem o JAR no smoke `42496723137` |
+| Painel HTTP, token e sessão | Smoke `42496723137` observado | Login autenticado, estado e métricas no servidor temporário |
+| Regras de geração/XP/cap | Smoke `42496723137` observado | Simulação ao vivo de espécie, grupo/jogador e cap global |
+| PC dos jogadores | Smoke `42496723137` observado no pack | Consulta autenticada ao PC ao vivo e salvo após reinício |
+| Prévia de armazenamento | Smoke `42496723137` observado no pack | Reavaliou o store mudado durante a validação, preservando os demais |
+| Cliente do pack sem o addon | Smoke `42496723137` conectado em Linux | [Execução do smoke mais recente](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42496723137) |
+| Aplicação seletiva de XP, níveis e captura | Smoke `42496723137` observado | Estado aplicado ao vivo e restaurado ao descartar revisão pendente |
 | Regras de espécie/geração, XP, captura, RCT e addons | Parcial | Regras puras e controles do painel cobertos; rotas de gameplay e addons variam por evento/versão |
 | Tailscale Serve ou túnel SSH no host de destino | Pendente | Requer host acessível pela rede privada |
 | TPS, heap e memória sob carga | Pendente | Sem benchmark A/B representativo |

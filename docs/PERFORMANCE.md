@@ -64,4 +64,4 @@ Não instale ServerCore, Alternate Current, não altere distâncias e não atual
 
 ## Limite da evidência atual
 
-O smoke [42495377408](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42495377408) confirma boot do pack, painel, conexão de cliente, consulta ao PC, métricas sob demanda, revalidação de armazenamento e aplicação seletiva ao vivo em um runner temporário. Ele não simula população/carga representativa e não substitui este A/B no host dedicado. Até esse host estar acessível, não há resultado de TPS/MSPT ou ganho de desempenho a declarar.
+O smoke [42496723137](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42496723137) confirma boot do pack, painel, conexão de cliente, simulação de regras, consulta ao PC, métricas sob demanda, revalidação de armazenamento e aplicação seletiva ao vivo em um runner temporário. Ele não simula população/carga representativa e não substitui este A/B no host dedicado. Até esse host estar acessível, não há resultado de TPS/MSPT ou ganho de desempenho a declarar.

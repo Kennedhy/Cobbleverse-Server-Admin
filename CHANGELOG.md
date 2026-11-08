@@ -8,7 +8,7 @@ Notable changes for each release are recorded here. Versions follow `MAJOR.MINOR
 
 - Apply saved XP, wild-level, and capture settings selectively at runtime; keep generation, gym, datapack, and world policies pending until restart.
 - Re-evaluate only changed loaded Pokémon stores during previews while preserving deduplication across party, PC, and reserve, with bounded temporary snapshots and a full-player fallback.
-- Extend the pinned-pack runtime smoke to cover on-demand diagnostics, live gameplay apply/discard, and a PC store changing during validation.
+- Extend the pinned-pack runtime smoke to cover generation/XP/cap simulation, on-demand diagnostics, live gameplay apply/discard, and a PC store changing during validation.
 - Show the actual runtime XP, level-cap, and capture settings in the overview and clarify which saved rules still require restart.
 - Prevent XP group renames from overwriting an existing group and silently reassigning players.
 - Include the Windows SSH tunnel helper with build artifacts and future release assets.
