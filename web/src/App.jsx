@@ -43,14 +43,12 @@ function Login({ onLogin, error, busy }) {
       <details className="login-access-help">
         <summary>Como acessar de outro computador</summary>
         <div>
-          <p>Se o servidor já tem um endereço HTTPS privado, entre na rede de administração e abra esse endereço. Você pode consultar a URL e o caminho do token com <code>/geracoes web</code> no console.</p>
-          <ol className="login-access-steps">
-            <li><strong>Encontre o caminho do token</strong><span>No console do servidor, execute <code>/geracoes web</code>. O comando mostra o caminho do arquivo, sem revelar o token.</span></li>
-            <li><strong>Abra o túnel no computador administrador</strong><span>Use o helper PowerShell distribuído com o JAR. Ele escolhe uma porta local livre, abre o navegador e pode copiar o token por SSH sem imprimi-lo:</span>
-              <pre><code>.\open-admin-tunnel.ps1 -Server &lt;alias-SSH&gt; -RemoteTokenPath '&lt;caminho-mostrado-pelo-comando&gt;' -CopyToken -OpenBrowser</code></pre>
-            </li>
-            <li><strong>Entre no painel</strong><span>Cole o token copiado. Mantenha a janela PowerShell aberta enquanto administra; fechá-la encerra o túnel.</span></li>
-          </ol>
+          <p>Execute <code>/geracoes web</code> no console do servidor para consultar o caminho do token. O comando nunca mostra o token.</p>
+          <div className="login-access-option"><strong>Endereço HTTPS privado</strong><span>Se o administrador do servidor configurou Tailscale Serve ou um proxy HTTPS privado, conecte-se à rede autorizada e abra o endereço configurado em <code>web.properties</code>.</span></div>
+          <div className="login-access-option"><strong>Túnel SSH no Windows</strong><span>Baixe <code>open-admin-tunnel.ps1</code> como asset separado quando ele estiver disponível na release. Se não estiver, o script também fica em <code>tools/</code> no código-fonte:</span>
+            <pre><code>.\open-admin-tunnel.ps1 -Server &lt;alias-SSH&gt; -RemoteTokenPath '&lt;caminho-mostrado-pelo-comando&gt;' -CopyToken -OpenBrowser</code></pre>
+            <span>Do checkout do projeto, execute <code>.\tools\open-admin-tunnel.ps1</code>. O script copia o token e mantém o túnel aberto até fechar a janela.</span>
+          </div>
           <p>O painel fica preso a <code>127.0.0.1</code> no servidor e no computador administrador. Não abra a porta <code>8765</code> na internet. O helper requer OpenSSH e um alias SSH configurado ou um host como <code>usuario@servidor</code>. Para host Windows, acrescente <code>-RemoteTokenShell Windows</code>.</p>
           <details className="login-manual-access">
             <summary>Configuração manual do túnel</summary>

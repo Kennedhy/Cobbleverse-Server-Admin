@@ -6,14 +6,13 @@ const formatMs = (value) => `${Number(value || 0).toFixed(1).replace('.', ',')} 
 export default function OverviewPage({ state, onPage }) {
   const active = state.active;
   const pending = state.pending;
-  const tps = state.averageTickMs > 0 ? Math.min(20, 1000 / state.averageTickMs) : 20;
   return <>
     <div className="page-intro"><h1>Visão geral</h1><p>Estado da configuração e do serviço no mundo atual.</p></div>
     {state.startupWarning && <Notice tone="warning">{state.startupWarning}</Notice>}
     {pending && <Notice tone="warning">A revisão {pending.revision} foi salva e aguarda reinício. A revisão ativa continua sendo {active.revision}.</Notice>}
     <Section title="Servidor" description={`Mundo ${state.world || 'atual'} · revisão ativa ${active.revision}`}>
       <div className="overview-facts">
-        <div><span className="fact-icon"><Clock3 size={18} /></span><div><strong>{formatMs(state.averageTickMs)}</strong><span>Ritmo aproximado: {tps.toFixed(1).replace('.', ',')} TPS</span></div></div>
+        <div><span className="fact-icon"><Clock3 size={18} /></span><div><strong>{formatMs(state.averageTickMs)}</strong><span>Tempo médio recente de processamento do tick</span></div></div>
         <div><span className="fact-icon"><Cpu size={18} /></span><div><strong>{state.heapUsedMb} / {state.heapMaxMb} MB</strong><span>Memória Java usada no momento da consulta</span></div></div>
         <div><span className="fact-icon"><Users size={18} /></span><div><strong>{state.onlinePlayers?.length || 0}</strong><span>Jogadores conectados agora</span></div></div>
       </div>

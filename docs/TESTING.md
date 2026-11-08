@@ -6,7 +6,7 @@ O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este doc
 
 O workflow manual **Cobbleverse runtime smoke** baixa o Cobbleverse 1.7.42 do Modrinth, verifica os arquivos e inicia um servidor e um cliente Fabric em uma máquina temporária do GitHub. O JAR informado no formulário é instalado apenas no servidor. O teste usa um mundo descartável e credenciais locais. A partir da 0.4.8, o teste também consulta o PC em memória e o arquivo salvo após reiniciar.
 
-Para testar mudanças ainda sem release, informe em `build_run` o ID de uma execução bem-sucedida do workflow **Build** na branch `main`. Com esse campo preenchido, o teste usa o artefato da compilação.
+Para testar mudanças ainda sem release, informe em `build_run` o ID de uma execução bem-sucedida do workflow **Build** na branch `main`. Com esse campo preenchido, o teste usa o artefato da compilação. A partir da próxima execução, esse artefato também incluirá o helper SSH para Windows como arquivo separado.
 
 ## Versão 0.4.8
 

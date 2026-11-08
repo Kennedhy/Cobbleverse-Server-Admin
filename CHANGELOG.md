@@ -5,6 +5,8 @@ Notable changes for each release are recorded here. Versions follow `MAJOR.MINOR
 ## [Unreleased]
 
 - Prevent XP group renames from overwriting an existing group and silently reassigning players.
+- Include the Windows SSH tunnel helper with build artifacts and future release assets.
+- Clarify private HTTPS and SSH tunnel setup for administrators on dedicated hosts.
 
 ## [0.4.8] — Preview
 

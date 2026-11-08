@@ -34,7 +34,7 @@ Raid, mega-evolution, and other spawn integrations depend on the versions in the
 ## Server installation
 
 1. Back up the server and world, then validate the addon on a copy.
-2. Download the JAR from [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases).
+2. Download the JAR from [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases). Future releases will also provide `open-admin-tunnel.ps1` as a separate asset for Windows SSH access. If an older release lacks it, download that version's source archive and use `tools/open-admin-tunnel.ps1`.
 3. Put the JAR in the Fabric server's `mods/` folder only. Do not install it on clients.
 4. Start the server and run `/geracoes web` as an administrator to get the panel address and token path.
 5. On the server machine, open `http://127.0.0.1:8765` and enter the token. For remote access, configure private HTTPS or an SSH tunnel. See [Panel administration](docs/ADMIN.md).

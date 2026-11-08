@@ -9,33 +9,35 @@
 
 O token é uma credencial administrativa. O addon tenta aplicar ACL restrita ao usuário que executa o servidor no Windows, ou modo POSIX `0600` quando o sistema oferece suporte. Revise as permissões do arquivo no seu host.
 
-## Acesso remoto seguro
+## Acesso remoto seguro para máquina dedicada
 
 O painel escuta em `127.0.0.1`. Você pode entrar por um endereço HTTPS privado ou usar um túnel SSH. Mantenha a porta do painel fechada no roteador e no firewall público.
 
-### Endereço HTTPS privado com Tailscale Serve
+### Opção recomendada: endereço privado com Tailscale Serve
 
-1. Conecte o servidor e os dispositivos administradores à mesma rede Tailscale. Restrinja nas políticas da rede o acesso ao servidor na porta HTTPS aos administradores.
-2. Na máquina do Minecraft, com o painel em execução, configure o Serve na raiz do endereço:
+1. Instale o Tailscale na máquina dedicada e no computador administrador. Conecte os dois à mesma tailnet e permita o acesso ao nó do servidor apenas para administradores.
+2. Na máquina do Minecraft, com o painel em execução, publique a porta local na tailnet:
 
    ```sh
    tailscale serve --bg http://127.0.0.1:8765
    tailscale serve status
    ```
 
-3. Copie o endereço HTTPS mostrado pelo Serve para `<mundo>/generation-control/web.properties`. Por exemplo:
+3. O comando mostra a URL HTTPS privada do host. Copie somente a origem, sem `/` final, para `<mundo>/generation-control/web.properties`:
 
    ```properties
    httpsOrigin=https://cobbleverse.exemplo.ts.net
    ```
 
-4. Reinicie o Minecraft. No dispositivo administrador, conectado à rede Tailscale, abra esse endereço no navegador e informe o token. Leia o arquivo do token por SSH/SFTP ou diretamente na máquina do servidor.
+4. Reinicie o Minecraft. No computador administrador, conectado à mesma tailnet, abra essa URL e informe o token. Leia o arquivo do token por SSH/SFTP ou use o helper PowerShell abaixo.
 
-O Serve fornece HTTPS dentro da sua rede Tailscale. Mantenha o compartilhamento público pelo Funnel desativado. [Documentação do Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve).
+O Serve fornece HTTPS dentro da tailnet. Não ative Tailscale Funnel para este painel. [Documentação atual do Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve).
 
 Você também pode usar um proxy HTTPS já instalado no mesmo host. Configure um hostname exclusivo para o painel, encaminhe a raiz para `http://127.0.0.1:8765`, preserve o cabeçalho `Host` do navegador e restrinja a entrada à rede administrativa. O addon valida o endereço configurado e a origem de cada alteração, sem confiar em cabeçalhos `X-Forwarded-*`. O cookie remoto recebe `Secure`. [Documentação do proxy reverso do Caddy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy).
 
 ### Helper do Windows
+
+O arquivo `open-admin-tunnel.ps1` é publicado como download separado junto com o JAR nas próximas releases. No checkout do código-fonte, ele fica em `tools/open-admin-tunnel.ps1`.
 
 Com OpenSSH e um alias configurado no `~/.ssh/config`:
 

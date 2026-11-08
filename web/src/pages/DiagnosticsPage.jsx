@@ -16,13 +16,12 @@ export default function DiagnosticsPage({ state, onRestore, onDiscard }) {
         <div><span>Revisão ativa</span><strong>{state.active.revision}</strong></div>
         <div><span>Revisão pendente</span><strong>{state.pending ? state.pending.revision : 'Nenhuma'}</strong></div>
         <div><span>Tick médio</span><strong>{tick.toFixed(2)} ms</strong></div>
-        <div><span>TPS estimado</span><strong>{tick > 0 ? Math.min(20, 1000 / tick).toFixed(1) : '20,0'}</strong></div>
         <div><span>Memória Java</span><strong>{state.heapUsedMb} / {state.heapMaxMb} MB</strong></div>
         <div><span>Jogadores conectados</span><strong>{state.onlinePlayers?.length || 0}</strong></div>
         <div><span>Arquivos de dados sobrepostos</span><strong>{state.transformedFiles}</strong></div>
         <div><span>Equipes RCT adaptadas</span><strong>{state.transformedTeams}</strong></div>
       </div>
-      <p className="field-hint">Medições de desempenho são amostras feitas quando você atualiza esta página; não representam a máquina inteira.</p>
+      <p className="field-hint">O painel mostra MSPT e heap quando esta página é consultada. Para TPS, CPU, GC e perfil de threads, use <a href="https://spark.lucko.me/docs/Command-Usage" target="_blank" rel="noreferrer">spark</a>; o gerenciador não coleta métricas em segundo plano.</p>
     </Section>
     {state.job && <Section title="Última validação" description={state.job.message}>
       <div className={`job-status job-${state.job.status}`}>

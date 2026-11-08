@@ -21,9 +21,10 @@
 
 O build obtém versões exatas de Cobblemon, RCT e integrações via IDs imutáveis do Maven do Modrinth. Os JARs de terceiros não são incorporados ao artefato do projeto nem ao repositório.
 
-O modpack de referência já inclui Lithium, FerriteCore, Krypton, ModernFix, C2ME e ScalableLux. Este addon não instala duplicatas nem modifica suas configurações. Alterar versões ou opções de C2ME sem perfil comparável pode afetar worldgen customizado.
+O modpack de referência contém 137 mods e já inclui Lithium, FerriteCore, Krypton, ModernFix, C2ME e ScalableLux. Este addon não instala duplicatas nem modifica suas configurações. Alterar versões ou opções de C2ME sem perfil comparável pode afetar worldgen customizado.
 
 - [Lithium](https://github.com/CaffeineMC/lithium) otimiza a lógica do jogo. [FerriteCore](https://github.com/malte0811/FerriteCore) reduz o uso de memória. Preserve as versões do pack como referência para a medição.
+- O pack já inclui os otimizadores principais; a instância local não inclui `spark`. Use [spark](https://modrinth.com/mod/spark) na cópia de teste para medir MSPT, TPS, CPU, heap e pausas de GC. A versão Fabric 1.21.1 funciona no servidor sem exigir o mod nos clientes. Spark é uma ferramenta de diagnóstico separada, não uma dependência nem código incorporado neste addon. Compare perfis do mesmo host e pack antes de alterar ou acrescentar mods.
 - Se a exploração de terreno novo concentrar os picos, teste o [Chunky para Fabric 1.21.1](https://modrinth.com/plugin/chunky?g=1.21.1&l=fabric) em uma cópia do mundo. Ele permite gerar uma região limitada durante manutenção, depois de fixar as regras de gerações e ginásios. Compare o tempo de tick ao explorar a região pré-gerada e outra equivalente sem pré-geração. A [documentação dos comandos](https://github.com/pop4959/Chunky/wiki/Commands) cobre seleção, progresso e pausa.
 
 ## Como avaliar o custo

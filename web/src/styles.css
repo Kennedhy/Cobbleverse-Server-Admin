@@ -291,11 +291,8 @@ td > input, td > select { height: 35px; }
 .login-access-help p { margin: 8px 0; }
 .login-access-help pre { overflow-x: auto; margin: 10px 0; padding: 10px 11px; border: 1px solid var(--border); border-radius: 4px; background: #0c1118; color: #d3e3e8; font-size: 11px; line-height: 1.5; white-space: pre; }
 .login-access-help code { overflow-wrap: anywhere; }
-.login-access-steps { display: grid; gap: 13px; margin: 12px 0; padding-left: 22px; }
-.login-access-steps li { padding-left: 2px; }
-.login-access-steps li::marker { color: var(--accent); font-weight: 650; }
-.login-access-steps strong { display: block; margin-bottom: 3px; color: #dce6eb; font-size: 12px; font-weight: 600; }
-.login-access-steps span { display: block; }
+.login-access-option { display: grid; gap: 5px; margin: 12px 0; padding: 11px 12px; border: 1px solid var(--border); border-radius: 5px; background: rgb(255 255 255 / 2%); }
+.login-access-option > strong { color: #dce6eb; font-size: 12px; font-weight: 600; }
 .login-manual-access { margin-top: 14px; padding-top: 11px; border-top: 1px solid var(--border); }
 .login-manual-access summary { width: fit-content; color: #dce6eb; font-size: 12px; font-weight: 550; cursor: pointer; }
 .login-manual-access summary:hover { color: var(--accent); }
