@@ -32,6 +32,9 @@ public final class GenerationControl implements DedicatedServerModInitializer {
         br.com.cobbleverse.generations.integration.Compatibility.requireSupported();
         br.com.cobbleverse.generations.integration.ValidationService.register();
         CobblemonIntegration.register();
+        ServerLifecycleEvents.END_DATA_PACK_RELOAD.register((server, resources, success) -> {
+            if (success) br.com.cobbleverse.generations.integration.TrialGuard.clear();
+        });
         br.com.cobbleverse.generations.integration.ExperienceManager.register();
         br.com.cobbleverse.generations.integration.TrainerDifficultyManager.register();
         RctIntegration.register();
@@ -183,6 +186,7 @@ public final class GenerationControl implements DedicatedServerModInitializer {
             synchronized (GenerationControl.class) { store = null; rules = null; gameplaySettings = null; gameplaySettingsRevision = 0; currentWorld = null; GenerationControl.server=null; }
             br.com.cobbleverse.generations.integration.ValidationService.clear();
             br.com.cobbleverse.generations.integration.CaptureManager.clear();
+            br.com.cobbleverse.generations.integration.TrialGuard.clear();
         });
         LOGGER.info("Generation Control inicializado. As regras são controladas pelo servidor.");
     }
