@@ -98,11 +98,22 @@ class WebPanelServerHttpTest {
     }
 
     @Test
-    void viewerTokenCannotSaveOrDeleteNamedPresets() throws Exception {
+    void viewerCannotRestartAndRemovedRoutesAreUnavailable() throws Exception {
         HttpResponse<String> login = send("POST", "/api/session", "{\"token\":\"" + VIEWER_TOKEN + "\"}", null, origin());
         String cookie = login.headers().firstValue("Set-Cookie").orElseThrow().split(";", 2)[0];
-        assertEquals(403, send("POST", "/api/presets", "{\"name\":\"staff\",\"candidate\":{}}", cookie, origin()).statusCode());
-        assertEquals(403, send("DELETE", "/api/presets?id=staff", null, cookie, origin()).statusCode());
+        assertEquals(403, send("POST", "/api/server/restart", null, cookie, origin()).statusCode());
+        for (String route : new String[]{"/api/presets", "/api/metrics", "/api/credentials"}) {
+            assertEquals(404, send("GET", route, null, cookie, null).statusCode());
+        }
+    }
+
+    @Test
+    void administratorNeedsSupervisorToRestart() throws Exception {
+        assertEquals(401, send("POST", "/api/server/restart", null, null, origin()).statusCode());
+        HttpResponse<String> login = send("POST", "/api/session", "{\"token\":\"" + TOKEN + "\"}", null, origin());
+        String cookie = login.headers().firstValue("Set-Cookie").orElseThrow().split(";", 2)[0];
+        assertEquals(405, send("GET", "/api/server/restart", null, cookie, null).statusCode());
+        assertEquals(409, send("POST", "/api/server/restart", null, cookie, origin()).statusCode());
     }
 
     @Test

@@ -5,6 +5,7 @@ import br.com.cobbleverse.generations.rules.CaptureRules;
 import br.com.cobbleverse.generations.rules.GameplaySettings;
 import com.cobblemon.mod.common.Cobblemon;
 import com.cobblemon.mod.common.api.pokedex.CaughtCount;
+import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.server.network.ServerPlayerEntity;
 
@@ -14,6 +15,11 @@ public final class CaptureManager {
     private static double multiplier=1;
     private CaptureManager() {}
     public static void clear() { cachedSettings=null; multiplier=1; }
+    public static void notifyBlockedCapture(LivingEntity thrower, PokemonEntity target) {
+        if (thrower instanceof ServerPlayerEntity player && !CobblemonIntegration.allowed(target.getPokemon()))
+            player.sendMessage(CobblemonIntegration.blockMessage());
+    }
+
     public static int threshold(int original,LivingEntity thrower,float modifiedCatchRate,boolean critical) {
         if(!GenerationControl.ready()) return original;
         GameplaySettings settings=GenerationControl.gameplaySettings();

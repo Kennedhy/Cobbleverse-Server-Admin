@@ -1,5 +1,6 @@
 import { Search } from 'lucide-react';
-import { Choice, Notice, Section } from '../components/ui.jsx';
+import { Choice, Section } from '../components/ui.jsx';
+import GymPage from './GymPage.jsx';
 
 const names = ['Kanto', 'Johto', 'Hoenn', 'Sinnoh', 'Unova', 'Kalos', 'Alola', 'Galar / Hisui', 'Paldea'];
 const modes = [
@@ -25,9 +26,10 @@ export default function GenerationPage({ draft, update, onSearch }) {
 
   return <>
     <div className="page-intro">
-      <h1>Gerações</h1>
-      <p>Escolha quais gerações de espécies ficam disponíveis no servidor.</p>
+      <h1>Gerações e ginásios</h1>
+      <p>Escolha as gerações de Pokémon e os circuitos de ginásios disponíveis no servidor.</p>
     </div>
+    <Section title="Seleção de gerações" description="Escolha o modo e as gerações disponíveis.">
     <div className="choice-grid mode-grid" role="group" aria-label="Modo das gerações">
       {modes.map(([mode, label]) => <Choice key={mode} selected={draft.mode === mode} onClick={() => update({ mode })}>{label}</Choice>)}
     </div>
@@ -46,6 +48,7 @@ export default function GenerationPage({ draft, update, onSearch }) {
       <p>A geração é a de introdução da espécie. Formas e megas têm regras próprias.</p>
       <p>Gerações 5–9 não incluem novos circuitos de ginásio neste modpack.</p>
     </div>
+    </Section>
     <Section title="Exceções de espécies" description="As exceções valem sobre a seleção geral de gerações.">
       <div className="exception-overview">
         <span><strong>{draft.allowSpecies?.length || 0}</strong> permitidas</span>
@@ -53,5 +56,6 @@ export default function GenerationPage({ draft, update, onSearch }) {
         <button className="text-button" type="button" onClick={onSearch}>Gerenciar exceções</button>
       </div>
     </Section>
+    <GymPage draft={draft} update={update} />
   </>;
 }

@@ -4,10 +4,13 @@ import br.com.cobbleverse.generations.GenerationControl;
 import br.com.cobbleverse.generations.config.ConfigStore;
 import br.com.cobbleverse.generations.data.PolicyResources;
 import br.com.cobbleverse.generations.integration.PcInspection;
+import br.com.cobbleverse.generations.integration.PcManagement;
+import br.com.cobbleverse.generations.integration.TrainerDifficultyManager;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.server.MinecraftServer;
 
 import java.io.IOException;
@@ -35,9 +38,11 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Small, loopback-only HTTP server. It serves bundled assets and a session-protected admin API. */
 public final class WebPanelServer {
+    private static final String DEFAULT_PORT = "0001";
     private static final int MAX_BODY = 65_536;
     private static final long SESSION_LIFETIME_MS = TimeUnit.HOURS.toMillis(12);
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
@@ -57,7 +62,9 @@ public final class WebPanelServer {
     private final Executor persistenceExecutor;
     private final WebPanelService service;
     private final PanelGameRequests gameRequests = new PanelGameRequests(2, Duration.ofSeconds(3));
-    private final Semaphore pcReads = new Semaphore(1);
+    private final Semaphore pcOperations = new Semaphore(1);
+    private final AtomicBoolean restarting = new AtomicBoolean();
+    private Path restartSignal;
     private record Credential(String name, String role, String token, boolean shared) {}
     private record Session(String role, String actor, long expiresAt) {}
     public record CreatedCredential(String name, String role, String token) {}
@@ -110,6 +117,17 @@ public final class WebPanelServer {
         http.createContext("/", this::handle);
     }
 
+    public static void registerPlayerSessions() {
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            WebPanelServer panel = current;
+            if (panel != null && panel.minecraft == server) panel.service.playerJoined(handler.player.getUuid());
+        });
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            WebPanelServer panel = current;
+            if (panel != null && panel.minecraft == server) panel.service.playerDisconnected(handler.player.getUuid());
+        });
+    }
+
     public static synchronized void start(MinecraftServer server) {
         stop();
         Path directory = GenerationControl.store().directory();
@@ -122,8 +140,8 @@ public final class WebPanelServer {
                 GenerationControl.LOGGER.info("Painel web desativado em {}.", settings);
                 return;
             }
-            int port = Integer.parseInt(properties.getProperty("port", "8765").trim());
-            if (port < 1024 || port > 65535) throw new IOException("A porta do painel deve ficar entre 1024 e 65535.");
+            int port = Integer.parseInt(properties.getProperty("port", DEFAULT_PORT).trim());
+            if (port < 1 || port > 65535) throw new IOException("A porta do painel deve ficar entre 1 e 65535.");
             String httpsOrigin = readHttpsOrigin(properties);
             String secret = Files.exists(directory.resolve("web-admin-access.disabled")) ? null : loadOrCreateToken(token);
             String viewSecret = Files.exists(directory.resolve("web-view-access.disabled")) ? null : loadOrCreateToken(viewerToken);
@@ -132,6 +150,8 @@ public final class WebPanelServer {
             HttpServer http = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 8);
             WebPanelServer panel = new WebPanelServer(server, port, httpsOrigin, secret, viewSecret,
                     token, viewerToken, users, namedCredentials, http);
+            String signal = System.getenv("COBBLEVERSE_RESTART_SIGNAL");
+            if (signal != null && !signal.isBlank()) panel.restartSignal = Path.of(signal);
             http.start();
             current = panel;
             GenerationControl.LOGGER.info("Painel web local: http://127.0.0.1:{}", port);
@@ -146,7 +166,6 @@ public final class WebPanelServer {
     public static synchronized void stop() {
         WebPanelServer panel = current;
         current = null;
-        ServerMetrics.clear();
         if (panel == null) return;
         panel.sessions.clear();
         panel.lastAction.clear();
@@ -272,11 +291,6 @@ public final class WebPanelServer {
         return List.copyOf(all);
     }
 
-    private List<Map<String, Object>> credentialViews() {
-        return credentials.stream().map(credential -> Map.<String, Object>of(
-                "name", credential.name(), "role", credential.role(), "shared", credential.shared())).toList();
-    }
-
     private void invalidateActor(String name) {
         for (var entry : sessions.entrySet()) {
             if (entry.getValue().actor().equals(name) && sessions.remove(entry.getKey(), entry.getValue())) {
@@ -344,7 +358,7 @@ public final class WebPanelServer {
         } else {
             Files.createDirectories(file.getParent());
             properties.setProperty("enabled", "true");
-            properties.setProperty("port", "8765");
+            properties.setProperty("port", DEFAULT_PORT);
             properties.setProperty("httpsOrigin", "");
             try (var output = Files.newOutputStream(file, StandardOpenOption.CREATE_NEW)) {
                 properties.store(output, "Painel administrativo Cobbleverse. O acesso fica limitado a 127.0.0.1.");
@@ -460,7 +474,7 @@ public final class WebPanelServer {
             if (path.startsWith("/api/")) {
                 String method = exchange.getRequestMethod();
                 String origin = exchange.getRequestHeaders().getFirst("Origin");
-                boolean mutation = method.equals("POST") || method.equals("DELETE");
+                boolean mutation = Set.of("POST", "PUT", "PATCH", "DELETE").contains(method);
                 if (origin == null ? mutation : !expectedOrigin.equals(origin)) {
                     json(exchange, 403, Map.of("message", "Origem recusada.")); return;
                 }
@@ -497,44 +511,79 @@ public final class WebPanelServer {
             json(exchange, 200, onServer(() -> service.snapshot(sessionId, role(sessionId), actor(sessionId))));
             return;
         }
-        if (path.equals("/api/metrics") && method.equals("GET")) {
-            json(exchange, 200, onServer(() -> ServerMetrics.snapshot(minecraft)));
+        if (path.equals("/api/dashboard") && method.equals("GET")) {
+            var dashboard = onServer(service::dashboard);
+            dashboard.put("restartAvailable", canEdit(sessionId) && restartSignal != null);
+            dashboard.put("restarting", restarting.get());
+            json(exchange, 200, dashboard);
             return;
         }
-        if (path.equals("/api/credentials")) {
-            if (!canEdit(sessionId)) { json(exchange, 403, Map.of("message", "Esta credencial permite apenas consulta.")); return; }
+        if (path.equals("/api/trainer-operations")) {
             if (method.equals("GET")) {
-                json(exchange, 200, Map.of("credentials", credentialViews()));
+                json(exchange, 200, onServer(TrainerOperationsSettings::read));
                 return;
             }
-            if (method.equals("POST")) {
-                throttle(sessionId);
-                JsonObject payload = ConfigStore.GSON.fromJson(body(exchange), JsonObject.class);
-                String name = payload != null && payload.has("name") && payload.get("name").isJsonPrimitive()
-                        ? payload.get("name").getAsString() : "";
-                String role = payload != null && payload.has("role") && payload.get("role").isJsonPrimitive()
-                        ? payload.get("role").getAsString() : "";
-                try {
-                    CreatedCredential credential = createCredential(name, role);
-                    json(exchange, 201, Map.of("credential", Map.of("name", credential.name(),
-                            "role", credential.role(), "token", credential.token())));
-                } catch (IllegalStateException conflict) {
-                    throw new WebPanelService.Problem(409, safeMessage(conflict.getMessage()));
+            if (!method.equals("PUT")) { methodNotAllowed(exchange, "GET, PUT"); return; }
+            if (!canEdit(sessionId)) { json(exchange, 403, Map.of("message", "Esta credencial permite apenas consulta.")); return; }
+            throttle(sessionId);
+            JsonObject payload = ConfigStore.GSON.fromJson(body(exchange), JsonObject.class);
+            json(exchange, 200, onServer(() -> TrainerOperationsSettings.update(payload, true)));
+            return;
+        }
+        if (path.equals("/api/trainer-difficulty")) {
+            if (method.equals("GET")) {
+                if (!TrainerDifficultyManager.catalogReady()) {
+                    onServer(() -> { TrainerDifficultyManager.refreshTrainerCatalog(); return null; });
                 }
+                json(exchange, 200, TrainerDifficultyManager.view());
                 return;
             }
-            if (method.equals("DELETE")) {
-                throttle(sessionId);
-                String name = query(exchange.getRequestURI().getRawQuery()).get("name");
+            if (!method.equals("PUT")) { methodNotAllowed(exchange, "GET, PUT"); return; }
+            if (!canEdit(sessionId)) { json(exchange, 403, Map.of("message", "Esta credencial permite apenas consulta.")); return; }
+            throttle(sessionId);
+            JsonObject payload = ConfigStore.GSON.fromJson(body(exchange), JsonObject.class);
+            try {
+                json(exchange, 200, TrainerDifficultyManager.save(payload));
+            } catch (IOException failure) {
+                throw new WebPanelService.Problem(503, "Não foi possível gravar a configuração de dificuldade dos treinadores.");
+            }
+            return;
+        }
+        if (path.equals("/api/player/progress")) {
+            if (!method.equals("GET")) { methodNotAllowed(exchange, "GET"); return; }
+            String player = query(exchange.getRequestURI().getRawQuery()).get("player");
+            var snapshot = onServer(() -> PlayerProgressAdmin.snapshot(minecraft, player));
+            json(exchange, 200, PlayerProgressAdmin.view(snapshot, PlayerProgressAdmin.readLedger(player)));
+            return;
+        }
+        if (path.equals("/api/player/progress/edit")) {
+            if (!method.equals("POST")) { methodNotAllowed(exchange, "POST"); return; }
+            if (!canEdit(sessionId)) { json(exchange, 403, Map.of("message", "Esta credencial permite apenas consulta.")); return; }
+            throttle(sessionId);
+            PlayerProgressAdmin.EditRequest payload = ConfigStore.GSON.fromJson(body(exchange), PlayerProgressAdmin.EditRequest.class);
+            PlayerProgressAdmin.EditPlan plan = onServer(() -> PlayerProgressAdmin.prepareEdit(minecraft, payload, auditActor(sessionId)));
+            PlayerProgressAdmin.PersistedEditPlan persisted;
+            try {
+                persisted = PlayerProgressAdmin.persist(plan);
+                PlayerProgressAdmin.PersistedEditPlan commit = persisted;
+                PlayerProgressAdmin.Snapshot updated;
                 try {
-                    if (!revokeCredential(name)) throw new WebPanelService.Problem(404, "Credencial individual não encontrada.");
-                } catch (IllegalStateException conflict) {
-                    throw new WebPanelService.Problem(409, safeMessage(conflict.getMessage()));
+                    updated = onServer(() -> PlayerProgressAdmin.applyEdit(minecraft, commit));
+                } catch (Exception failure) {
+                    try { PlayerProgressAdmin.rollbackLedger(commit); }
+                    catch (RuntimeException rollbackFailure) { failure.addSuppressed(rollbackFailure); }
+                    throw failure;
                 }
-                json(exchange, 200, Map.of("revoked", true));
-                return;
+                json(exchange, 200, PlayerProgressAdmin.view(updated, commit.ledgerAfter()));
+            } finally {
+                PlayerProgressAdmin.close(plan);
             }
-            methodNotAllowed(exchange, "GET, POST, DELETE");
+            return;
+        }
+        if (path.equals("/api/server/restart") && method.equals("POST")) {
+            if (!canEdit(sessionId)) throw new WebPanelService.Problem(403, "Esta credencial permite apenas consulta.");
+            throttle(sessionId);
+            restart(exchange, auditActor(sessionId));
             return;
         }
         if (path.equals("/api/job") && method.equals("GET")) {
@@ -561,42 +610,6 @@ public final class WebPanelServer {
             }
             return;
         }
-        if (path.equals("/api/presets")) {
-            var parameters = query(exchange.getRequestURI().getRawQuery());
-            if (method.equals("GET")) {
-                String id = parameters.get("id");
-                if (id == null || id.isBlank()) json(exchange, 200, Map.of("presets", GenerationControl.store().listPresets()));
-                else {
-                    try { json(exchange, 200, GenerationControl.store().preset(id)); }
-                    catch (IllegalStateException missing) { throw new WebPanelService.Problem(404, missing.getMessage()); }
-                }
-                return;
-            }
-            if (method.equals("POST")) {
-                if (!canEdit(sessionId)) { json(exchange, 403, Map.of("message", "Esta credencial permite apenas consulta.")); return; }
-                throttle(sessionId);
-                var payload = ConfigStore.GSON.fromJson(body(exchange), WebPanelService.PresetRequest.class);
-                if (payload == null || payload.candidate() == null) throw new WebPanelService.Problem(400, "Configuração do preset ausente.");
-                try {
-                    var preset = GenerationControl.store().savePreset(payload.name(), payload.candidate());
-                    json(exchange, 201, Map.of("preset", preset));
-                } catch (IllegalArgumentException invalid) { throw new WebPanelService.Problem(400, safeMessage(invalid.getMessage())); }
-                catch (IllegalStateException conflict) { throw new WebPanelService.Problem(409, safeMessage(conflict.getMessage())); }
-                return;
-            }
-            if (method.equals("DELETE")) {
-                if (!canEdit(sessionId)) { json(exchange, 403, Map.of("message", "Esta credencial permite apenas consulta.")); return; }
-                throttle(sessionId);
-                String id = parameters.get("id");
-                try { GenerationControl.store().deletePreset(id); }
-                catch (IllegalArgumentException invalid) { throw new WebPanelService.Problem(400, safeMessage(invalid.getMessage())); }
-                catch (IllegalStateException missing) { throw new WebPanelService.Problem(404, safeMessage(missing.getMessage())); }
-                json(exchange, 200, Map.of("deleted", true));
-                return;
-            }
-            methodNotAllowed(exchange, "GET, POST, DELETE");
-            return;
-        }
         if (path.equals("/api/species") && method.equals("GET")) {
             String query = query(exchange.getRequestURI().getRawQuery()).getOrDefault("q", "").trim();
             if (query.length() < 2 || query.length() > 64) {
@@ -604,6 +617,47 @@ public final class WebPanelServer {
             }
             var results = PolicyResources.searchSpecies(query, 30);
             json(exchange, 200, Map.of("ready", results != null, "items", results == null ? List.of() : results));
+            return;
+        }
+        if (path.equals("/api/pc/edit")) {
+            if (!method.equals("POST")) { methodNotAllowed(exchange, "POST"); return; }
+            if (!canEdit(sessionId)) { json(exchange, 403, Map.of("message", "Esta credencial permite apenas consulta.")); return; }
+            if (!pcOperations.tryAcquire()) throw new WebPanelService.Problem(503, "Já há uma operação de PC em andamento. Tente novamente.");
+            try {
+                throttle(sessionId);
+                PcManagement.Request payload = ConfigStore.GSON.fromJson(body(exchange), PcManagement.Request.class);
+                PcManagement.Result result;
+                try {
+                    PcManagement.Prepared prepared = onServer(() -> PcManagement.prepare(minecraft, payload, actor(sessionId)));
+                    if (!prepared.requiresQueueBarrier()) {
+                        result = prepared.immediateResult();
+                    } else {
+                        PcManagement.awaitPendingSaves(prepared);
+                        result = onServer(() -> PcManagement.applyDeferred(minecraft, prepared));
+                    }
+                } catch (PcManagement.Busy busy) {
+                    throw new WebPanelService.Problem(503, safeMessage(busy.getMessage()));
+                } catch (PcManagement.Conflict conflict) {
+                    throw new WebPanelService.Problem(409, safeMessage(conflict.getMessage()));
+                } catch (PcManagement.Unavailable unavailable) {
+                    throw new WebPanelService.Problem(422, safeMessage(unavailable.getMessage()));
+                } catch (IllegalArgumentException invalid) {
+                    throw new WebPanelService.Problem(400, safeMessage(invalid.getMessage()));
+                }
+                try { result.persisted().get(10, TimeUnit.SECONDS); }
+                catch (java.util.concurrent.TimeoutException timeout) {
+                    throw new WebPanelService.Problem(503, "A alteração foi enviada ao armazenamento, mas a gravação ainda está ocupada. Aguarde e atualize o PC.");
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new WebPanelService.Problem(503, "A gravação foi interrompida. Atualize o PC antes de repetir a alteração.");
+                } catch (java.util.concurrent.ExecutionException failure) {
+                    throw new WebPanelService.Problem(503, "Não foi possível confirmar a gravação. Atualize o PC antes de repetir a alteração.");
+                }
+                json(exchange, 200, Map.of("action", result.action(), "player", result.player().toString(),
+                        "box", result.box(), "position", result.position(), "message", "PC atualizado."));
+            } finally {
+                pcOperations.release();
+            }
             return;
         }
         if (path.equals("/api/pc/players") || path.equals("/api/pc/box")) {
@@ -631,15 +685,16 @@ public final class WebPanelServer {
             json(exchange, 200, onServer(() -> service.action(sessionId, payload)));
             return;
         }
+        if (path.equals("/api/server/restart")) { methodNotAllowed(exchange, "POST"); return; }
         if (path.equals("/api/session")) { methodNotAllowed(exchange, "GET, POST, DELETE"); return; }
-        if (path.equals("/api/state") || path.equals("/api/metrics") || path.equals("/api/job") || path.equals("/api/species") || path.equals("/api/action") || path.equals("/api/simulate") || path.equals("/api/history") || path.equals("/api/presets") || path.equals("/api/credentials")) {
-            methodNotAllowed(exchange, path.equals("/api/action") || path.equals("/api/simulate") ? "POST" : "GET"); return;
+        if (path.equals("/api/state") || path.equals("/api/dashboard") || path.equals("/api/job") || path.equals("/api/species") || path.equals("/api/action") || path.equals("/api/simulate") || path.equals("/api/history") || path.equals("/api/pc/edit")) {
+            methodNotAllowed(exchange, path.equals("/api/action") || path.equals("/api/simulate") || path.equals("/api/pc/edit") ? "POST" : "GET"); return;
         }
         json(exchange, 404, Map.of("message", "Rota não encontrada."));
     }
 
     private void inspectPc(HttpExchange exchange, String path) throws Exception {
-        if (!pcReads.tryAcquire()) throw new WebPanelService.Problem(503, "Já há uma consulta ao PC em andamento. Tente novamente.");
+        if (!pcOperations.tryAcquire()) throw new WebPanelService.Problem(503, "Já há uma operação de PC em andamento. Tente novamente.");
         try {
             var parameters = query(exchange.getRequestURI().getRawQuery());
             if (path.equals("/api/pc/players")) {
@@ -682,7 +737,7 @@ public final class WebPanelServer {
             }
             json(exchange, 200, box);
         } finally {
-            pcReads.release();
+            pcOperations.release();
         }
     }
 
@@ -789,6 +844,29 @@ public final class WebPanelServer {
     private String auditActor(String sessionId) { return "web:" + actor(sessionId); }
 
     private boolean canEdit(String sessionId) { return role(sessionId).equals("admin"); }
+
+    private void restart(HttpExchange exchange, String actor) throws IOException {
+        if (restartSignal == null) {
+            throw new WebPanelService.Problem(409, "Inicie o servidor pelo supervisor para habilitar o reinício pelo painel.");
+        }
+        if (!restarting.compareAndSet(false, true)) {
+            throw new WebPanelService.Problem(409, "O servidor já está reiniciando.");
+        }
+        try {
+            Files.writeString(restartSignal, "restart", StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        } catch (IOException failure) {
+            restarting.set(false);
+            GenerationControl.LOGGER.warn("Não foi possível sinalizar o reinício ao supervisor.", failure);
+            throw new WebPanelService.Problem(503, "O supervisor do servidor não está disponível.");
+        }
+        GenerationControl.LOGGER.info("Reinício solicitado por {}.", actor);
+        try {
+            json(exchange, 202, Map.of("restarting", true));
+        } finally {
+            exchange.close();
+            minecraft.execute(() -> minecraft.stop(false));
+        }
+    }
 
     private void throttle(String sessionId) {
         long now = System.nanoTime();

@@ -4,8 +4,8 @@ export function ActionBar({ onRefresh, onValidate, onSave, onApplyLive, dirty, v
   pending, applyLiveAvailable, liveGameplayRevision, message }) {
   const status = message || (pending
     ? applyLiveAvailable
-      ? `XP, limites e captura ainda usam a revisão ${liveGameplayRevision}; as demais regras aguardam reinício.`
-      : 'XP, limites e captura já correspondem ao servidor; as demais regras aguardam reinício.'
+      ? `XP, limites, captura e shiny ainda usam a revisão ${liveGameplayRevision}; as demais regras aguardam reinício.`
+      : 'XP, limites, captura e shiny já correspondem ao servidor; as demais regras aguardam reinício.'
     : 'Alterações salvas entram em vigor após reiniciar o servidor.');
   return <div className="action-dock">
     <div className="action-row">
@@ -26,7 +26,7 @@ export function ActionBar({ onRefresh, onValidate, onSave, onApplyLive, dirty, v
       {status}
     </p>
     {pending && applyLiveAvailable && <div className="live-apply-row">
-      <span>Aplicar XP, limites de nível e captura da revisão pendente sem reiniciar. Gerações, ginásios e mundo continuam pendentes.</span>
+      <span>Aplicar XP, limites de nível, captura e shiny da revisão pendente sem reiniciar. Gerações, ginásios e mundo continuam pendentes.</span>
       <button className="button button-quiet button-small" type="button" disabled={working || dirty} onClick={onApplyLive}>
         <Play size={15} />Aplicar ao vivo
       </button>

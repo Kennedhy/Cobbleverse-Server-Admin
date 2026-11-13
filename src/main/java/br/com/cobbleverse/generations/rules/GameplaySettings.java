@@ -10,7 +10,9 @@ public record GameplaySettings(boolean manageExperience, double globalXpMultipli
                                Map<String, Double> groupXpMultipliers,
                                Map<String, String> playerXpGroups,
                                String levelCapMode, int globalLevelCap,
-                               String wildLevelBehavior, double captureMultiplier) {
+                               String wildLevelBehavior, boolean blockOverCapPokemonInBattles,
+                               String overCapBattleBehavior,
+                               double captureMultiplier, Integer shinyRate) {
     public GameplaySettings {
         playerXpMultipliers = Map.copyOf(playerXpMultipliers);
         groupXpMultipliers = Map.copyOf(groupXpMultipliers);
@@ -21,7 +23,7 @@ public record GameplaySettings(boolean manageExperience, double globalXpMultipli
         return new GameplaySettings(config.manageExperience, config.globalXpMultiplier,
                 config.playerXpMultipliers, config.groupXpMultipliers, config.playerXpGroups,
                 config.levelCapMode, config.globalLevelCap, config.wildLevelBehavior,
-                config.captureMultiplier);
+                config.blockOverCapPokemonInBattles, config.overCapBattleBehavior, config.captureMultiplier, config.shinyRate);
     }
 
     public boolean matches(GenerationConfig config) {
@@ -33,14 +35,24 @@ public record GameplaySettings(boolean manageExperience, double globalXpMultipli
                 && levelCapMode.equals(config.levelCapMode)
                 && globalLevelCap == config.globalLevelCap
                 && wildLevelBehavior.equals(config.wildLevelBehavior)
-                && Double.compare(captureMultiplier, config.captureMultiplier) == 0;
+                && blockOverCapPokemonInBattles == config.blockOverCapPokemonInBattles
+                && overCapBattleBehavior.equals(config.overCapBattleBehavior)
+                && Double.compare(captureMultiplier, config.captureMultiplier) == 0
+                && java.util.Objects.equals(shinyRate, config.shinyRate);
     }
 
     public Map<String, Object> view() {
-        return Map.of("manageExperience", manageExperience, "globalXpMultiplier", globalXpMultiplier,
-                "playerXpMultipliers", playerXpMultipliers, "groupXpMultipliers", groupXpMultipliers,
-                "playerXpGroups", playerXpGroups, "levelCapMode", levelCapMode,
-                "globalLevelCap", globalLevelCap, "wildLevelBehavior", wildLevelBehavior,
-                "captureMultiplier", captureMultiplier);
+        return Map.ofEntries(Map.entry("manageExperience", manageExperience),
+                Map.entry("globalXpMultiplier", globalXpMultiplier),
+                Map.entry("playerXpMultipliers", playerXpMultipliers),
+                Map.entry("groupXpMultipliers", groupXpMultipliers),
+                Map.entry("playerXpGroups", playerXpGroups),
+                Map.entry("levelCapMode", levelCapMode),
+                Map.entry("globalLevelCap", globalLevelCap),
+                Map.entry("wildLevelBehavior", wildLevelBehavior),
+                Map.entry("blockOverCapPokemonInBattles", blockOverCapPokemonInBattles),
+                Map.entry("overCapBattleBehavior", overCapBattleBehavior),
+                Map.entry("captureMultiplier", captureMultiplier),
+                Map.entry("shinyRate", shinyRate == null ? 0 : shinyRate));
     }
 }

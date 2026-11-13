@@ -32,7 +32,12 @@ public final class GenerationConfig {
     public String levelCapMode = "rct";
     public int globalLevelCap = 100;
     public String wildLevelBehavior = "unchanged";
+    /** Enables optional level-cap enforcement in PvE battles; the behavior selects team or per-Pokemon blocking. */
+    public boolean blockOverCapPokemonInBattles = false;
+    /** "team" blocks the whole PvE battle; "pokemon" blocks only over-cap Pokémon from entering PvE. */
+    public String overCapBattleBehavior = "team";
     public double captureMultiplier = 1.0;
+    public Integer shinyRate = null;
 
     public static final List<String> REGIONS = List.of("kanto", "johto", "hoenn", "sinnoh");
 
@@ -66,9 +71,12 @@ public final class GenerationConfig {
         if (!Set.of("rct", "global").contains(levelCapMode)) throw new IllegalArgumentException("Modo de limite de nível inválido.");
         if (globalLevelCap < 1 || globalLevelCap > 100) throw new IllegalArgumentException("O limite global deve ficar entre 1 e 100.");
         if (!Set.of("unchanged", "clamp", "block").contains(wildLevelBehavior)) throw new IllegalArgumentException("Regra de nível dos selvagens inválida.");
+        if (!Set.of("team", "pokemon").contains(overCapBattleBehavior)) throw new IllegalArgumentException("Regra de batalha acima do cap inválida.");
         validateMultiplier(globalXpMultiplier);
         if (!Double.isFinite(captureMultiplier) || captureMultiplier < 0 || captureMultiplier > 100)
             throw new IllegalArgumentException("O multiplicador de captura deve ficar entre 0 e 100.");
+        if (shinyRate != null && (shinyRate < 1 || shinyRate > 1_000_000))
+            throw new IllegalArgumentException("A taxa shiny deve ficar entre 1 e 1000000.");
         playerXpMultipliers = normalizeMultipliers(playerXpMultipliers, true);
         groupXpMultipliers = normalizeMultipliers(groupXpMultipliers, false);
         if (playerXpGroups == null || playerXpGroups.size() > 512) throw new IllegalArgumentException("Lista de grupos de jogadores inválida.");

@@ -80,6 +80,11 @@ public final class ExperienceManager {
         return Math.max(0, Math.min(100, LevelUtils.levelCap(player)));
     }
 
+    /** Returns zero while RCT progress is unavailable so battle checks can fail open safely. */
+    public static int battleCap(GameplaySettings settings, ServerPlayerEntity player) {
+        return cap(settings, player);
+    }
+
     /** Uses the same cap calculation as XP awards and wild encounter adjustments. */
     public static int previewCap(GenerationConfig c, ServerPlayerEntity player) {
         return cap(GameplaySettings.from(c), player);

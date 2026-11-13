@@ -11,6 +11,19 @@ import static org.junit.jupiter.api.Assertions.*;
 class PolicyTest {
     @TempDir Path directory;
 
+    @Test void shinyRateIsOptionalValidatedAndPartOfLiveSettings() {
+        var config = new GenerationConfig().validated();
+        var old = br.com.cobbleverse.generations.rules.GameplaySettings.from(config);
+        assertNull(old.shinyRate());
+        config.shinyRate = 2048;
+        assertFalse(old.matches(config));
+        assertEquals(2048, br.com.cobbleverse.generations.rules.GameplaySettings.from(config).shinyRate());
+        config.shinyRate = 0;
+        assertThrows(IllegalArgumentException.class, config::validated);
+        config.shinyRate = 1_000_001;
+        assertThrows(IllegalArgumentException.class, config::validated);
+    }
+
     @Test void nationalDexBoundariesIncludeHisuiInGenerationEight() {
         int[] starts = {1,152,252,387,494,650,722,810,906};
         int[] ends = {151,251,386,493,649,721,809,905,1025};
@@ -165,26 +178,6 @@ class PolicyTest {
         } finally {
             io.shutdownNow();
         }
-    }
-
-    @Test void namedPresetsAreBoundedWorldScopedAndValidatedOnRead() throws Exception {
-        ConfigStore store = new ConfigStore(directory);
-        store.open();
-        GenerationConfig candidate = store.active();
-        candidate.mode = "cumulative";
-        candidate.selectedGeneration = 3;
-        var saved = store.savePreset("Temporada Johto", candidate);
-        assertEquals("temporada-johto", saved.id());
-        assertEquals("Temporada Johto", saved.name());
-        assertEquals(Set.of(1, 2, 3), store.preset(saved.id()).generations);
-        assertEquals(List.of(saved.id()), store.listPresets().stream().map(ConfigStore.PresetInfo::id).toList());
-
-        candidate.selectedGeneration = 2;
-        store.savePreset("Temporada Johto", candidate);
-        assertEquals(Set.of(1, 2), store.preset(saved.id()).generations);
-        store.deletePreset(saved.id());
-        assertTrue(store.listPresets().isEmpty());
-        assertThrows(IllegalStateException.class, () -> store.preset(saved.id()));
     }
 
     @Test void asyncRestoreReadsHistoryOffThreadAndStagesANewRevision() throws Exception {

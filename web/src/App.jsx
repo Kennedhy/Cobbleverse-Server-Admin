@@ -1,36 +1,32 @@
-import { AlertCircle, Box, Menu, Server, X } from 'lucide-react';
+import { AlertCircle, Menu, Server, Settings, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { copy, newConfig, request, stable } from './api.js';
 import { ActionBar } from './components/ActionBar.jsx';
 import SpeciesSearch from './components/SpeciesSearch.jsx';
 import { Sidebar } from './components/Sidebar.jsx';
+import { PixelIcon } from './components/PixelIcon.jsx';
+import { ValidationResult } from './components/ValidationResult.jsx';
 import { Loading } from './components/ui.jsx';
-import AccessPage from './pages/AccessPage.jsx';
 import CapturePage from './pages/CapturePage.jsx';
-import DiagnosticsPage from './pages/DiagnosticsPage.jsx';
 import ExperiencePage from './pages/ExperiencePage.jsx';
 import GenerationPage from './pages/GenerationPage.jsx';
-import GymPage from './pages/GymPage.jsx';
 import HistoryPage from './pages/HistoryPage.jsx';
 import OverviewPage from './pages/OverviewPage.jsx';
 import PlayerPcPage from './pages/PlayerPcPage.jsx';
-import PresetsPage from './pages/PresetsPage.jsx';
 import RulesPage from './pages/RulesPage.jsx';
+import TrainerPage from './pages/TrainerPage.jsx';
 import WorldPage from './pages/WorldPage.jsx';
 
 const pages = {
   overview: ['Visão geral', OverviewPage],
-  access: ['Acessos', AccessPage],
-  generations: ['Gerações', GenerationPage],
-  gyms: ['Ginásios', GymPage],
+  generations: ['Gerações e ginásios', GenerationPage],
   rules: ['Regras', RulesPage],
   experience: ['XP e níveis', ExperiencePage],
   capture: ['Captura', CapturePage],
+  trainers: ['Treinadores', TrainerPage],
   pc: ['PC dos jogadores', PlayerPcPage],
   history: ['Histórico', HistoryPage],
-  presets: ['Presets e arquivos', PresetsPage],
   world: ['Mundo', WorldPage],
-  diagnostics: ['Diagnóstico', DiagnosticsPage],
 };
 
 function Login({ onLogin, error, busy }) {
@@ -40,7 +36,7 @@ function Login({ onLogin, error, busy }) {
     <form className="login-panel" onSubmit={submit}>
       <div className="login-brand"><span className="brand-mark"><Server size={20} /></span><span>Cobbleverse <small>Control</small></span></div>
       <h1>Entrar no servidor</h1>
-      <p>Use uma credencial individual criada em <strong>Acessos</strong> ou o token compartilhado inicial do servidor.</p>
+      <p>Use uma credencial individual ou o token compartilhado inicial do servidor.</p>
       <label className="field"><span className="field-label">Token de acesso</span>
         <input type="password" value={token} autoComplete="current-password" autoFocus onChange={(event) => setToken(event.target.value)} placeholder="Cole o token deste servidor" />
       </label>
@@ -55,11 +51,11 @@ function Login({ onLogin, error, busy }) {
             <pre><code>.\open-admin-tunnel.ps1 -Server &lt;alias-SSH&gt; -RemoteTokenPath '&lt;caminho-mostrado-pelo-comando&gt;' -CopyToken -OpenBrowser</code></pre>
             <span>Do checkout do projeto, execute <code>.\tools\open-admin-tunnel.ps1</code>. O script copia o token e mantém o túnel aberto até fechar a janela.</span>
           </div>
-          <p>O painel fica preso a <code>127.0.0.1</code> no servidor e no computador administrador. Não abra a porta <code>8765</code> na internet. O helper requer OpenSSH e um alias SSH configurado ou um host como <code>usuario@servidor</code>. Para host Windows, acrescente <code>-RemoteTokenShell Windows</code>.</p>
+          <p>O painel e o túnel escutam em <code>127.0.0.1</code>. O helper requer OpenSSH e um alias SSH ou um host como <code>usuario@servidor</code>. Se o servidor usa outra porta, informe <code>-RemotePort</code>. Para host Windows, acrescente <code>-RemoteTokenShell Windows</code>.</p>
           <details className="login-manual-access">
             <summary>Configuração manual do túnel</summary>
             <p>Mantenha este comando aberto e troque o primeiro número da opção <code>-L</code> se a porta local estiver ocupada:</p>
-            <pre><code>ssh -N -T -o ExitOnForwardFailure=yes -L 127.0.0.1:18765:127.0.0.1:8765 &lt;alias-SSH&gt;</code></pre>
+            <pre><code>ssh -N -T -o ExitOnForwardFailure=yes -L 127.0.0.1:18765:127.0.0.1:1 &lt;alias-SSH&gt;</code></pre>
             <p>Abra <code>http://127.0.0.1:18765</code> no navegador e copie o token do host por SSH/SFTP.</p>
           </details>
         </div>
@@ -90,9 +86,15 @@ export default function App() {
   const [dockMessage, setDockMessage] = useState('');
   const [toast, setToast] = useState(null);
   const [page, setPage] = useState('overview');
+  const [pcPlayer, setPcPlayer] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [speciesOpen, setSpeciesOpen] = useState(false);
   draftRef.current = draft;
+
+  const changePage = (next, player = null) => {
+    setPcPlayer(player);
+    setPage(next);
+  };
 
   const adopt = useCallback((next, candidate = newConfig(next)) => {
     setState(next);
@@ -105,8 +107,8 @@ export default function App() {
     setValidated(null);
     setDockMessage(next.pending
       ? next.pendingGameplaySettingsDiffer
-        ? `XP, limites e captura da revisão ${next.pending.revision} ainda não estão aplicados ao vivo.`
-        : 'XP, limites e captura já correspondem ao servidor; as demais regras aguardam reinício.'
+        ? `XP, limites, captura e shiny da revisão ${next.pending.revision} ainda não estão aplicados ao vivo.`
+        : 'XP, limites, captura e shiny já correspondem ao servidor; as demais regras aguardam reinício.'
       : '');
   }, []);
 
@@ -205,6 +207,7 @@ export default function App() {
       ['Multiplicador global de XP', draft.globalXpMultiplier, 0, 100],
       ['Limite global de nível', draft.globalLevelCap, 1, 100],
       ['Multiplicador de captura', draft.captureMultiplier, 0, 100],
+      ...(draft.shinyRate == null ? [] : [['Taxa shiny', draft.shinyRate, 1, 1000000]]),
       ...Object.entries(draft.groupXpMultipliers || {}).map(([name, value]) => [`Grupo ${name}`, value, 0, 100]),
       ...Object.entries(draft.playerXpMultipliers || {}).map(([uuid, value]) => [`XP individual ${uuid}`, value, 0, 100]),
     ];
@@ -214,11 +217,16 @@ export default function App() {
       setToast({ tone: 'error', message: `${invalid[0]} precisa estar entre ${invalid[2]} e ${invalid[3]}.` });
       return;
     }
+    if (draft.shinyRate != null && !Number.isInteger(Number(draft.shinyRate))) {
+      setToast({ tone: 'error', message: 'A taxa shiny precisa ser um número inteiro.' });
+      return;
+    }
     const submitted = copy(draft);
     const submittedSnapshot = stable(submitted);
     setWorking('validate'); setValidated(null); setDockMessage('Validando o rascunho no servidor…');
     try {
       const response = await request('/api/action', { method: 'POST', body: { action: 'validate', expectedRevision: baseRevision, candidate: submitted } });
+      setState((current) => ({ ...current, job: response.job }));
       const job = response.job.status === 'running' ? await waitForJob(response.job.id) : response.job;
       if (job.status === 'validated' && job.revision === baseRevision && stable(draftRef.current) === submittedSnapshot) {
         setDraft(job.candidate);
@@ -229,9 +237,8 @@ export default function App() {
         setDockMessage('O rascunho mudou durante a validação. Valide novamente.');
         setToast({ tone: 'warning', message: 'A validação corresponde a outra versão do rascunho.' });
       } else {
-        setDockMessage(job.message || 'A validação encontrou problemas. Consulte o Diagnóstico.');
+        setDockMessage(job.message || 'A validação encontrou problemas.');
         setToast({ tone: 'error', message: job.message || 'A validação encontrou problemas.' });
-        setPage('diagnostics');
       }
     } catch (failure) {
       setDockMessage(failure.message); setToast({ tone: 'error', message: failure.message });
@@ -250,7 +257,6 @@ export default function App() {
       if (job.status !== 'saved' || !job.state) throw new Error(job.message || 'O salvamento não foi confirmado. Atualize o painel para conferir o estado.');
       adopt(job.state, newConfig(job.state));
       setToast({ tone: 'success', message: job.message });
-      setPage('diagnostics');
     } catch (failure) {
       setValidated(null); setDockMessage(failure.message); setToast({ tone: 'error', message: failure.message });
       if (failure.status === 401) { setAuth(false); setAuthError('Sua sessão expirou. Entre novamente.'); }
@@ -260,15 +266,15 @@ export default function App() {
   const applyLiveSettings = async () => {
     if (dirty || !state?.pending || !state.pendingGameplaySettingsDiffer) return;
     const revision = state.pending.revision;
-    if (!window.confirm(`Aplicar agora XP, limites de nível e captura da revisão ${revision}? Gerações, ginásios e regras do mundo continuarão aguardando o reinício.`)) return;
+    if (!window.confirm(`Aplicar agora XP, limites de nível, captura e shiny da revisão ${revision}? Gerações, ginásios e regras do mundo continuarão aguardando o reinício.`)) return;
     setWorking('applyLiveSettings');
     try {
       const next = await request('/api/action', { method: 'POST', body: {
         action: 'applyLiveSettings', expectedRevision: baseRevision,
       } });
       setState(next);
-      setDockMessage(`XP, limites e captura da revisão ${revision} foram aplicados ao vivo. As demais regras continuam pendentes até reiniciar.`);
-      setToast({ tone: 'success', message: `XP, limites e captura da revisão ${revision} estão ativos.` });
+      setDockMessage(`XP, limites, captura e shiny da revisão ${revision} foram aplicados ao vivo. As demais regras continuam pendentes até reiniciar.`);
+      setToast({ tone: 'success', message: `XP, limites, captura e shiny da revisão ${revision} estão ativos.` });
     } catch (failure) {
       setDockMessage(failure.message); setToast({ tone: 'error', message: failure.message });
       if (failure.status === 401) { setAuth(false); setAuthError('Sua sessão expirou. Entre novamente.'); }
@@ -312,12 +318,6 @@ export default function App() {
     setState(null); setDraft(null); setAuth(false); setValidated(null);
   };
 
-  const currentCredentialRevoked = () => {
-    setState(null); setDraft(null); setValidated(null);
-    setAuthError('Sua credencial foi revogada. Entre novamente com outra conta.');
-    setAuth(false);
-  };
-
   const Page = pages[page]?.[1] || GenerationPage;
   const pageTitle = pages[page]?.[0] || 'Gerações';
   const pending = Boolean(state?.pending);
@@ -326,31 +326,34 @@ export default function App() {
   if (auth !== true) return <Login onLogin={login} error={authError} busy={authBusy} />;
   if (!state || !draft) return <main className="loading-screen"><Loading>Carregando configurações…</Loading></main>;
 
-  return <div className={`app-shell${canEdit ? '' : ' app-read-only'}`}>
+  return <div className={`app-shell${canEdit ? '' : ' app-read-only'}${page === 'overview' ? ' app-overview' : ''}`}>
     <header className="topbar">
-      <div className="top-brand"><span className="brand-mark"><Box size={22} strokeWidth={1.7} /></span><span>Cobbleverse Control</span></div>
+      <div className="top-brand"><PixelIcon name="ball" size={46} /><span>Cobblemon Admin<small>Gerenciamento do Servidor</small></span></div>
       <button className="icon-button mobile-menu" aria-label="Abrir navegação" onClick={() => setMobileNav(true)}><Menu size={19} /></button>
-      <div className="topbar-context"><span className="server-led" /><strong>Servidor ativo</strong><span className="topbar-separator" />
-        <span>Mundo {state.world}</span><span className="topbar-separator" /><span>Revisão ativa {state.active.revision}</span>
-        {pending && <span className="pending-pill">Pendente {state.pending.revision}</span>}
-        <span className="account-pill">Acesso: {state.accessActor}</span>
+      <div className="topbar-context">
+        {pending && page !== 'overview' && <span className="pending-pill">Pendente {state.pending.revision}</span>}
         {!canEdit && <span className="role-pill">Somente consulta</span>}
       </div>
-      <button className="text-button logout-button" onClick={logout}>Sair</button>
+      <details className="dex-settings">
+        <summary aria-label="Opções da sessão"><Settings size={24} /></summary>
+        <div><span>{state.accessActor}</span><button type="button" className="button" onClick={logout}>Sair</button></div>
+      </details>
     </header>
-    <Sidebar page={page} onPage={setPage} open={mobileNav} onClose={() => setMobileNav(false)} canEdit={canEdit} />
+    <Sidebar page={page} onPage={changePage} open={mobileNav} onClose={() => setMobileNav(false)} />
     <div className="main-column">
-      <main className="workspace" inert={!canEdit && !['overview', 'pc', 'history', 'presets', 'diagnostics', 'experience'].includes(page)}>
-        {working === 'refresh' && <div className="connection-banner"><Loading>Atualizando estado do servidor…</Loading></div>}
-        {dirty && <div className="workspace-head"><span className="draft-marker">Rascunho não salvo · {pageTitle}</span></div>}
-        <Page draft={draft} update={update} state={state}
+      <main className={`workspace${page === 'overview' ? ' workspace-overview' : ''}`} inert={!canEdit && !['overview', 'pc', 'history', 'experience', 'trainers'].includes(page)}>
+        {page !== 'overview' && working === 'refresh' && <div className="connection-banner"><Loading>Atualizando estado do servidor…</Loading></div>}
+        {page !== 'overview' && page !== 'trainers' && dirty && <div className="workspace-head"><span className="draft-marker">Rascunho não salvo · {pageTitle}</span></div>}
+        <Page draft={draft} update={update} state={state} onRefresh={refresh} busy={Boolean(working)}
           canEdit={canEdit}
-          onSessionRevoked={currentCredentialRevoked}
-          onSearch={() => setSpeciesOpen(true)} onPage={setPage}
+          onSearch={() => setSpeciesOpen(true)} onPage={changePage}
+          initialPlayer={pcPlayer} onNotice={setToast} dirty={dirty}
           onRestore={() => recoveryAction('restore')} onDiscard={() => recoveryAction('discard')}
-          onRestoreRevision={(revision) => recoveryAction('restoreRevision', revision)}
-          onCancelValidation={cancelValidation} />
-        {canEdit && <ActionBar onRefresh={refresh} onValidate={validate} onSave={save} dirty={dirty}
+          onRestoreRevision={(revision) => recoveryAction('restoreRevision', revision)} />
+        {canEdit && page !== 'overview' && page !== 'trainers' && state.job?.action === 'validate' && (
+          <ValidationResult job={state.job} onCancel={cancelValidation} />
+        )}
+        {canEdit && page !== 'overview' && page !== 'trainers' && <ActionBar onRefresh={refresh} onValidate={validate} onSave={save} dirty={dirty}
           onApplyLive={applyLiveSettings} applyLiveAvailable={state.pendingGameplaySettingsDiffer}
           liveGameplayRevision={state.liveGameplayRevision}
           validated={signatureMatches} working={Boolean(working)} pending={pending} message={dockMessage} />}

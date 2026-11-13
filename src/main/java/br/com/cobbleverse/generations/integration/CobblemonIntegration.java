@@ -12,6 +12,7 @@ import com.cobblemon.mod.common.pokemon.Species;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
+import net.minecraft.server.network.ServerPlayerEntity;
 import java.util.*;
 
 public final class CobblemonIntegration {
@@ -50,9 +51,25 @@ public final class CobblemonIntegration {
         });
         CobblemonEvents.BATTLE_STARTED_PRE.subscribe(event -> {
             if (!GenerationControl.ready()) return;
+            var gameplay = GenerationControl.gameplaySettings();
+            // Level-cap restrictions apply only to PvE. PvP remains available regardless of either policy.
+            boolean enforceTeamBattleCap = gameplay != null && gameplay.manageExperience()
+                    && gameplay.blockOverCapPokemonInBattles()
+                    && "team".equals(gameplay.overCapBattleBehavior())
+                    && !event.getBattle().isPvP();
+            Map<UUID, Integer> battleCaps = enforceTeamBattleCap ? new HashMap<>() : Map.of();
             for (var actor : event.getBattle().getActors()) {
                 for (var entry : actor.getPokemonList()) {
                     var pokemon=entry.getOriginalPokemon();
+                    if (enforceTeamBattleCap
+                            && pokemon.getOwnerPlayer() instanceof ServerPlayerEntity player) {
+                        int cap = battleCaps.computeIfAbsent(player.getUuid(), ignored -> ExperienceManager.battleCap(gameplay, player));
+                        if (cap > 0 && pokemon.getLevel() > cap) {
+                            event.setReason(Text.literal("Batalha bloqueada: sua equipe tem Pokémon acima do limite de nível (" + cap + ")."));
+                            event.cancel();
+                            return;
+                        }
+                    }
                     boolean exemptExistingPlayer = !restrictExisting() && pokemon.getOwnerPlayer()!=null;
                     boolean exemptTrainer = !GenerationControl.rules().filterTeams() && !pokemon.isWild() && pokemon.getOwnerPlayer()==null;
                     {

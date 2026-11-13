@@ -9,6 +9,10 @@ const wildModes = [
   ['block', 'Bloquear aparição'],
   ['unchanged', 'Manter nível original'],
 ];
+const overCapBattleModes = [
+  ['team', 'Bloquear a batalha inteira'],
+  ['pokemon', 'Bloquear só o Pokémon acima do cap'],
+];
 
 function GroupEditor({ draft, update }) {
   const [error, setError] = useState('');
@@ -249,10 +253,13 @@ export default function ExperiencePage({ draft, update, state, canEdit }) {
         <span><strong>{simulation.awardedXp ?? '—'}</strong> XP após limite restante</span>
         <span><strong>{simulation.levelCap ?? '—'}</strong> limite ({simulation.levelCapSource})</span>
         <span><strong>{simulation.wildLevelBehavior}</strong> comportamento selvagem</span>
+        <span><strong>{simulation.blockOverCapPokemonInBattles
+          ? (simulation.overCapBattleBehavior === 'pokemon' ? 'Só o Pokémon acima do cap' : 'Batalha inteira')
+          : 'Permitido'}</strong> em PvE · PvP sempre permitido</span>
       </div>}
     </Section>
     <div inert={!canEdit}>
-    <Section title="Nível dos Pokémon" description="Escolha o limite usado para XP e para o nível dos Pokémon selvagens.">
+    <Section title="Nível dos Pokémon" description="Configure o cap usado por XP, encontros selvagens e, opcionalmente, batalhas.">
       <div className="cap-layout">
         <div><span className="field-label">Origem do limite</span><div className="choice-grid cap-choice-grid" role="group" aria-label="Origem do limite de nível">
           {capModes.map(([mode, label]) => <Choice key={mode} selected={draft.levelCapMode === mode} onClick={() => update({ levelCapMode: mode })}>{label}</Choice>)}
@@ -266,6 +273,15 @@ export default function ExperiencePage({ draft, update, state, canEdit }) {
         <p>Com vários jogadores próximos, vale o maior limite.</p>
         <p>Sem jogador com progresso carregado, o nível original é mantido.</p>
         <p>A regra é aplicada na aparição do Pokémon e afeta quem encontrar o mesmo selvagem.</p>
+      </div>
+      <div className="form-row form-row-single">
+        <Toggle label="Bloquear batalha com Pokémon acima do cap" checked={Boolean(draft.blockOverCapPokemonInBattles)}
+          disabled={!draft.manageExperience} onChange={(blockOverCapPokemonInBattles) => update({ blockOverCapPokemonInBattles })} />
+        <SelectField label="Comportamento em PvE" value={draft.overCapBattleBehavior || 'team'}
+          disabled={!draft.manageExperience || !draft.blockOverCapPokemonInBattles}
+          options={overCapBattleModes.map(([value, label]) => ({ value, label }))}
+          onChange={(overCapBattleBehavior) => update({ overCapBattleBehavior })} />
+        <Notice>Esta regra vale contra Pokémon selvagens e treinadores. PvP nunca é bloqueado pelo cap. No modo de batalha inteira, qualquer Pokémon acima do limite impede o início; no modo individual, só esse Pokémon fica impedido de entrar ou ser enviado. Com o cap RCT ainda carregando, o servidor não bloqueia por engano.</Notice>
       </div>
     </Section>
     <Notice>O modo RCT acompanha o progresso individual. O limite global usa o valor definido acima. Depois de validar e salvar, use Aplicar ao vivo no rodapé para ativar XP e limites sem reiniciar.</Notice>

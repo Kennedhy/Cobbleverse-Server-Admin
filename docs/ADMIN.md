@@ -4,18 +4,12 @@
 
 1. Inicie o servidor Fabric com o addon instalado somente no servidor.
 2. Execute `/geracoes web` no console ou como operador. O comando mostra o endereço local e os caminhos dos tokens compartilhados.
-3. No próprio computador do servidor, abra `http://127.0.0.1:8765` e informe uma credencial:
-   - `web-access.token`: administrador compartilhado inicial; permite alterar, validar, salvar, restaurar e descartar configurações.
-   - `web-view-access.token`: consulta compartilhada inicial; permite ver estado, PCs, histórico e usar o simulador, mas não alterar configurações.
+3. Abra o painel por HTTPS privado ou pelo endereço local do túnel SSH descrito abaixo. Informe uma credencial:
+   - `web-access.token`: administrador compartilhado inicial; permite alterar, validar, salvar, restaurar e descartar configurações, além de gerenciar Pokémon nos PCs.
+   - `web-view-access.token`: consulta compartilhada inicial; permite ver estado, PCs, histórico e usar o simulador, mas não alterar configurações nem Pokémon.
 4. Mantenha os arquivos privados. Não coloque tokens em URL, log público, captura de tela ou conversa.
 
-Depois do primeiro acesso, abra **Acessos** e crie uma credencial individual para cada administrador ou pessoa de consulta. O token novo é mostrado uma vez; copie-o e guarde-o como uma senha. O histórico identifica mudanças feitas no navegador com `web:<identificador>`. Um identificador revogado fica reservado para preservar a leitura das revisões antigas. Tokens compartilhados aparecem com os identificadores `admin-compartilhado` e `consulta-compartilhada`, que identificam a credencial, não uma pessoa.
-
-A página **Acessos** revoga credenciais individuais e encerra imediatamente as sessões correspondentes. Para deixar de usar os tokens compartilhados, crie ao menos um administrador individual e revogue `admin-compartilhado` e/ou `consulta-compartilhada` nessa página. A revogação grava um marcador para impedir que o token seja recriado no próximo início. O acesso administrativo compartilhado não pode ser revogado enquanto for o último administrador. Para reativar um token compartilhado, com o servidor parado remova o marcador `web-admin-access.disabled` ou `web-view-access.disabled` correspondente e reinicie; um token novo será criado.
-
-Os arquivos individuais ficam em `<mundo>/generation-control/web-users/` com o nome `<identificador>.<papel>.token`. Os arquivos e a pasta recebem ACL restrita ao usuário que executa o servidor no Windows, ou modo POSIX `0600`/`0700` quando o sistema oferece suporte. Revogar pela página também funciona com o painel ativo e atualiza as sessões imediatamente. As credenciais compartilhadas antigas podem ser renovadas manualmente apagando o token correspondente com o servidor parado e reiniciando; para desativá-las, prefira a página **Acessos**.
-
-Também é possível criar ou revogar uma conta pelo console ou como operador:
+Crie ou revogue credenciais individuais pelo console ou como operador.
 
 ```text
 /geracoes web credencial criar nome admin
@@ -24,6 +18,8 @@ Também é possível criar ou revogar uma conta pelo console ou como operador:
 ```
 
 O token aparece somente na resposta do comando de criação. O histórico de mudanças por comando continua usando o nome do jogador ou do console.
+
+Revogar uma credencial encerra as sessões correspondentes. Com pelo menos um administrador individual, você também pode revogar `admin-compartilhado`. Use `consulta-compartilhada` para revogar o token compartilhado de consulta. Para reativar um token compartilhado, remova o arquivo `web-admin-access.disabled` ou `web-view-access.disabled` correspondente com o servidor parado e inicie-o novamente.
 
 ## Acesso remoto seguro para máquina dedicada
 
@@ -37,7 +33,7 @@ O painel escuta em `127.0.0.1`. Você pode entrar por um endereço HTTPS privado
 3. Na máquina do Minecraft, com o painel em execução, publique a porta local na tailnet:
 
    ```sh
-   tailscale serve --bg http://127.0.0.1:8765
+   tailscale serve --bg http://127.0.0.1:1
    tailscale serve status
    ```
 
@@ -51,7 +47,7 @@ O painel escuta em `127.0.0.1`. Você pode entrar por um endereço HTTPS privado
 
 O Serve fornece HTTPS dentro da tailnet. Não ative Tailscale Funnel para este painel. Consulte os requisitos de [HTTPS e acesso à tailnet](https://tailscale.com/docs/features/tailscale-serve) e a [referência atual do comando](https://tailscale.com/docs/reference/tailscale-cli/serve).
 
-Você também pode usar um proxy HTTPS já instalado no mesmo host. Configure um hostname exclusivo para o painel, encaminhe a raiz para `http://127.0.0.1:8765`, preserve o cabeçalho `Host` do navegador e restrinja a entrada à rede administrativa. O addon valida o endereço configurado e a origem de cada alteração, sem confiar em cabeçalhos `X-Forwarded-*`. O cookie remoto recebe `Secure`. [Documentação do proxy reverso do Caddy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy).
+Você também pode usar um proxy HTTPS já instalado no mesmo host. Configure um hostname exclusivo para o painel, encaminhe a raiz para `http://127.0.0.1:1`, preserve o cabeçalho `Host` do navegador e restrinja a entrada à rede administrativa. O addon valida o endereço configurado e a origem de cada alteração, sem confiar em cabeçalhos `X-Forwarded-*`. O cookie remoto recebe `Secure`. [Documentação do proxy reverso do Caddy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy).
 
 ### Helper do Windows
 
@@ -63,7 +59,7 @@ Com OpenSSH e um alias configurado no `~/.ssh/config`:
 .\tools\open-admin-tunnel.ps1 -Server cobbleverse -OpenBrowser
 ```
 
-O helper escolhe uma porta loopback livre, verifica a resposta do painel e mostra a URL local. Para buscar o token por SSH e copiá-lo para a área de transferência sem exibi-lo no terminal:
+O helper encaminha para a porta 1 do servidor por padrão. Use `-RemotePort` se o mundo tiver outra porta em `web.properties`. O helper escolhe uma porta loopback livre, verifica a resposta do painel e mostra a URL local. Para buscar o token por SSH e copiá-lo para a área de transferência sem exibi-lo no terminal:
 
 ```powershell
 .\tools\open-admin-tunnel.ps1 `
@@ -95,7 +91,7 @@ Em qualquer cliente com OpenSSH. Para o token de consulta, troque o caminho remo
 
 ```sh
 ssh -N -T -o ExitOnForwardFailure=yes \
-  -L 18765:127.0.0.1:8765 admin@host-privado
+  -L 127.0.0.1:18765:127.0.0.1:1 admin@host-privado
 ```
 
 Com esse processo ativo, abra `http://127.0.0.1:18765` no computador administrador. Para obter o token, leia o arquivo por SSH/SFTP ou use o helper do Windows.
@@ -106,29 +102,51 @@ O arquivo `<mundo>/generation-control/web.properties` controla o painel:
 
 ```properties
 enabled=true
-port=8765
+port=0001
 httpsOrigin=
 ```
 
-Reinicie o servidor após mudar qualquer opção deste arquivo. Deixe `httpsOrigin` vazio para usar somente o acesso local ou por SSH. Uma alteração feita no navegador é salva como revisão pendente. Use **Validar** e **Salvar**. Depois de salvar, o painel pode aplicar **XP, limites de nível e captura** ao servidor em execução com **Aplicar ao vivo**. Isso inclui o multiplicador global e por jogador/grupo, o modo e comportamento do limite de nível e o multiplicador de captura. O efeito das Poké Bolas é preservado. Se o Cobblemon estiver usando um calculador de captura diferente do padrão, o painel recusa aplicar a captura e não aplica parcialmente as outras opções.
+`0001` corresponde à porta TCP 1. Navegadores bloqueiam HTTP direto nessa porta, inclusive com zeros à esquerda. Use o endereço HTTPS privado ou a porta local do túnel. Em Linux, o processo Java precisa de permissão para abrir a porta 1 quando ela estiver abaixo de `ip_unprivileged_port_start`. Mundos com uma porta já gravada em `web.properties` usam esse valor. [Fetch Standard](https://fetch.spec.whatwg.org/#port-blocking) · [Documentação do kernel Linux](https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html).
+
+Reinicie o servidor após mudar qualquer opção deste arquivo. Deixe `httpsOrigin` vazio para usar somente o acesso local ou por SSH. Uma alteração feita no navegador é salva como revisão pendente. Use **Validar** e **Salvar**. Depois de salvar, o painel pode aplicar **XP, limites, captura e taxa shiny** ao servidor em execução com **Aplicar ao vivo**. Isso inclui multiplicadores global e por jogador/grupo, o modo e comportamento do limite, o multiplicador de captura e a taxa de shiny. O efeito das Poké Bolas é preservado. A taxa shiny usa a configuração global do Cobblemon e também afeta outros sistemas que consultem essa configuração. Se o Cobblemon estiver usando um calculador de captura diferente do padrão, o painel recusa aplicar a captura e não aplica parcialmente as outras opções.
 
 **Gerações, espécies permitidas, ginásios, equipes, datapacks e regras de mundo continuam aguardando o reinício.** O painel mostra essa diferença entre a revisão salva e as regras em execução. Descartar a revisão pendente também restaura XP, limites e captura ao estado salvo ativo. A revisão anterior continua disponível para restauração pelo painel.
 
 Se o painel informar que o jogo está ocupado, aguarde alguns segundos. A consulta do andamento de uma validação tenta novamente automaticamente. Para as demais operações, tente de novo quando o servidor voltar a responder.
 
+## Treinadores, dificuldade e recompensas
+
+Na página **Treinadores**, a aba **Aparições e recompensas** ajusta as opções de spawn do RCT, como chance e intervalo, limites por jogador/servidor, distâncias e requisito de cartão. O painel usa a API de configuração do RCT e aplica alterações para as próximas aparições. O limite de entidades tem tetos para evitar valores que aumentem a carga sem controle.
+
+A mesma aba permite ativar/desativar pagamentos de NPCs do CobbleDollars e definir seu multiplicador global. Esse multiplicador também afeta os ganhos de Pokémon selvagens; o pack não oferece configuração de recompensa por treinador individual.
+
+Na aba **Dificuldade por grupos**, crie grupos de jogadores e de treinadores. Atribua jogadores por UUID, e treinadores por categoria RCT ou ID específico. Crie perfis para um par de grupos, para um lado ou para o padrão geral. Os perfis podem alterar nível, IV mínimo e EV por atributo; as mudanças só afetam as cópias de Pokémon usadas na batalha contra treinadores RCT. O par exato tem prioridade, seguido por grupo de treinador, grupo de jogador e perfil padrão. Em batalha cooperativa, vale o perfil mais difícil entre os jogadores. PvP, batalhas contra selvagens e equipes originais dos datapacks ficam fora dessa regra.
+
+## Progressão individual
+
+Abra **PC dos jogadores**, selecione um jogador conectado e consulte seu progresso RCT. Administradores podem trocar o circuito permitido e marcar/desmarcar treinadores vencidos. A edição é recusada enquanto o jogador estiver em batalha ou se o progresso tiver mudado desde a leitura. O histórico anterior é salvo antes da alteração; a operação usa as APIs do RCT e sincroniza o novo limite individual com o jogador. O RCT só disponibiliza esses dados pela API quando o jogador está conectado, então a progressão não pode ser consultada ou editada offline. Credenciais viewer podem consultar o progresso carregado, mas não alterá-lo.
+
 ## PC dos jogadores
 
 Abra **PC dos jogadores**, busque por nome ou UUID e percorra os resultados com **Anterior/Próxima**. Selecione **Ver PC** para abrir uma caixa e use as setas para navegar pelas caixas. A consulta mostra posição, espécie, forma, nível e indicação de shiny.
 
-O painel identifica quando a caixa vem da memória do jogo ou do último arquivo salvo. Quando o servidor já não conhece o nome de um jogador offline, a lista mostra seu UUID. O índice temporário cobre até 200 mil arquivos de jogador; exceder esse limite produz um erro explícito, sem retornar uma lista parcial. É possível selecionar um Pokémon para consultar natureza, habilidade, golpes, IVs e EVs. O acesso é somente leitura e suporta os arquivos NBT e JSON do Cobblemon. O token de consulta também pode acessar esta página.
+O painel identifica quando a caixa vem da memória do jogo ou do último arquivo salvo. Quando o servidor já não conhece o nome de um jogador offline, a lista mostra seu UUID. O índice temporário cobre até 200 mil arquivos de jogador; exceder esse limite produz um erro explícito, sem retornar uma lista parcial. É possível selecionar um Pokémon para consultar natureza, habilidade, golpes, IVs e EVs. Administradores podem adicionar Pokémon em um espaço vazio, alterar espécie, forma, nível, shiny, apelido e os campos avançados, ou excluir um Pokémon após confirmação. A gravação usa a API do Cobblemon para atualizar tanto PCs carregados quanto arquivos salvos de jogadores offline; se o arquivo estiver ausente, danificado ou ocupado, o painel interrompe a operação e preserva os dados. Antes de editar ou excluir, o servidor confere o UUID do Pokémon no espaço para evitar aplicar uma ação sobre dados que mudaram desde a consulta. Apenas credenciais de administrador podem gravar; o token de consulta continua somente leitura.
 
 ## Atribuição de XP
 
 Na página **XP e níveis**, crie grupos próprios e atribua multiplicadores a eles. Para encontrar um jogador offline pelo nome ou UUID, use **Buscar no mundo**; a tabela de resultados permite selecionar o grupo e configurar o multiplicador individual. A busca é feita somente quando solicitada e reutiliza o índice temporário do PC. Se o jogador ainda não tiver dados salvos no mundo, adicione-o pelo UUID.
 
-## Diagnóstico de desempenho
+Na seção **Nível dos Pokémon**, ative **Bloquear batalha com Pokémon acima do cap** para habilitar a regra contra selvagens e treinadores. Em **Comportamento em PvE**, escolha se uma equipe com qualquer Pokémon acima do limite bloqueia a batalha inteira ou se somente o Pokémon acima do cap fica impedido de entrar, inclusive em trocas durante a luta. Pokémon permitidos da equipe continuam podendo ser usados no segundo modo. Batalhas PvP nunca são bloqueadas por nível, independentemente do modo escolhido. A regra usa o mesmo limite global ou RCT configurado para XP e níveis; enquanto o progresso RCT não terminou de carregar, o cap falha aberto e não bloqueia por engano. A opção vem desligada por padrão e só funciona quando **Gerenciar XP e limite de nível** está ligado.
 
-Em **Diagnóstico**, o painel estima TPS pelo MSPT e registra MSPT, heap, CPU do processo Java (quando a JVM fornece a métrica) e tempo de GC entre amostras. Uma amostra é coletada a cada 15 segundos enquanto a página está aberta; o gráfico mantém até 30 minutos/120 pontos apenas na memória. Fechar a página interrompe as consultas e reiniciar o servidor limpa a série. A estimativa de TPS não substitui a medição do Spark; use-o em uma cópia controlada do pack para perfis de threads e análise detalhada.
+## Reinício pelo painel
+
+No diretório do servidor, passe o comando Java habitual ao supervisor `tools/run-server.py`. Ajuste o caminho do script e mantenha os argumentos de memória que seu servidor já usa.
+
+```sh
+python /caminho/para/tools/run-server.py java -Xmx4G -jar fabric-server.jar nogui
+```
+
+**Reiniciar servidor** exige uma sessão de administrador. O Minecraft desconecta os jogadores e salva o mundo antes de encerrar. O supervisor aguarda a saída do Java e inicia o servidor novamente. Entre novamente no painel quando ele voltar.
 
 ## Boas práticas
 

@@ -29,7 +29,8 @@ PACK_SHA512 = (
 )
 FABRIC = "https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.18.4/1.1.0/server/jar"
 GAME_ADDRESS = "127.0.0.1:25585"
-PANEL_ADDRESS = "http://127.0.0.1:8765"
+PANEL_PORT = 8765
+PANEL_ADDRESS = f"http://127.0.0.1:{PANEL_PORT}"
 PLAYER = "CobbleSmoke"
 SIMULATION_PLAYER_UUID = "3d0bbb38-80e3-3a3d-9a13-84995b87f05a"
 
@@ -132,16 +133,6 @@ def panel_smoke(server):
                 state = json.load(response)
                 if state["world"] != "smoke-world":
                     raise RuntimeError("Panel reported a different world")
-            if "estimatedTps" in state:
-                with opener.open(PANEL_ADDRESS + "/api/metrics", timeout=8) as response:
-                    metrics = json.load(response)
-                if not metrics.get("samples"):
-                    raise RuntimeError("Diagnostics did not return a runtime sample")
-                sample = metrics["samples"][-1]
-                for field in ("estimatedTps", "tickMs", "heapUsedMb", "gcCollectionDelta", "gcTimeDeltaMs"):
-                    if field not in sample:
-                        raise RuntimeError(f"Diagnostics sample is missing {field}")
-                print("On-demand diagnostics returned TPS estimate, MSPT, heap, and GC metrics.")
             print("Authenticated panel state passed.")
             return opener
         except urllib.error.HTTPError as failure:
@@ -604,6 +595,10 @@ def run(root):
         "level-name=smoke-world\nlevel-seed=42\nview-distance=3\nsimulation-distance=3\n"
         "spawn-protection=0\n"
     )
+    # The disposable runner uses an unprivileged port across addon versions.
+    panel_config = server / "smoke-world" / "generation-control" / "web.properties"
+    panel_config.parent.mkdir(parents=True, exist_ok=True)
+    panel_config.write_text(f"enabled=true\nport={PANEL_PORT}\n")
     download(FABRIC, server / "fabric-server.jar")
     (client / "options.txt").write_text("renderDistance:3\nsimulationDistance:3\nmaxFps:20\n")
     # Smaller texture load for software rendering on the runner.

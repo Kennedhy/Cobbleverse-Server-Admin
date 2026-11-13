@@ -6,7 +6,7 @@ Addon Fabric **server-only** para administrar regras do Cobbleverse por um paine
 
 [Read this in English](README.en.md)
 
-> **Versão 0.5.0 — preview.** Use primeiro em uma cópia do servidor e do mundo. Consulte [o estado de validação](docs/TESTING.md).
+> **Versão 0.6.0 — preview.** Use primeiro em uma cópia do servidor e do mundo. Consulte [o estado de validação](docs/TESTING.md).
 
 ## O que administra
 
@@ -14,13 +14,17 @@ Addon Fabric **server-only** para administrar regras do Cobbleverse por um paine
 - Circuitos de ginásio e regras de estruturas reconhecidas pelos mods integrados.
 - Multiplicador de XP global, grupos criados no painel e ajustes por jogador.
 - Limite de nível de Pokémon selvagens, global ou derivado do progresso RCT. Perto de vários jogadores, usa o maior limite aplicável.
-- Multiplicador global de captura que preserva o efeito das Poké Bolas.
-- Consulta paginada das caixas de PC dos jogadores conectados ou com dados salvos no mundo.
-- Presets rápidos e nomeados por mundo, além de importação/exportação JSON com comparação antes de aplicar ao rascunho.
-- Validação, histórico sob demanda de MSPT, TPS estimado, CPU Java e tempo de GC, histórico de configurações, descarte de rascunho e restauração da revisão anterior.
-- Acessos individuais de administrador e consulta, revogação de sessões e autoria por conta no histórico.
+- Regras opcionais de cap em PvE: bloquear a batalha inteira ou somente o Pokémon acima do cap; PvP não recebe bloqueio de nível.
+- Multiplicador global de captura que preserva o efeito das Poké Bolas e taxa opcional de aparição shiny.
+- Aparição de treinadores RCT: chance, frequência, limites, distância, cartão e NPC de associação.
+- Dificuldade de batalhas RCT por grupos de treinadores e jogadores, com ajustes em nível, IV e EV aplicados apenas às cópias de batalha.
+- Recompensas CobbleDollars de NPC e multiplicador global de renda. O multiplicador também afeta Pokémon selvagens; valores de prêmio individuais não são oferecidos pelo mod.
+- Consulta paginada das caixas de PC dos jogadores conectados ou com dados salvos no mundo; administradores podem adicionar, editar e excluir Pokémon. Na mesma página, podem editar circuito e treinadores vencidos da progressão RCT individual enquanto o jogador estiver conectado.
+- Validação sob demanda, histórico de configurações, descarte de rascunho e restauração da revisão anterior.
+- Credenciais de administrador e consulta gerenciadas pelo console, com autoria por conta no histórico.
+- Dashboard de jogadores online com acesso ao PC e reinício pelo supervisor do servidor.
 
-O painel salva uma revisão pendente. Depois de validar e salvar, um administrador pode aplicar XP, limites de nível e captura ao vivo; gerações, ginásios, datapacks e regras de mundo entram em vigor quando o servidor reinicia. Pokémon e estruturas que já existem não são removidos.
+As configurações de gerações, ginásios, XP, nível, captura e shiny continuam seguindo o fluxo de revisão, validação e salvamento do painel. XP, níveis, captura e shiny podem ser aplicados ao vivo; gerações, ginásios, datapacks e regras de mundo exigem reinício. As telas de treinadores salvam separadamente: spawn e economia usam as APIs do RCT/CobbleDollars, e a dificuldade vale nas próximas batalhas. Progresso RCT só pode ser editado com o jogador conectado e fora de batalha. Pokémon e estruturas existentes não são removidos.
 
 ## Compatibilidade
 
@@ -42,9 +46,9 @@ As integrações de raids, megaevoluções e spawns de outros mods dependem das 
 2. Baixe o JAR e os utilitários `open-admin-tunnel.ps1` e `prepare_server_mods.py` na página de [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases). Releases antigas podem não incluir esses arquivos; nesse caso, obtenha-os no código-fonte da mesma versão.
 3. Coloque o JAR somente na pasta `mods/` do servidor Fabric. Não o instale nos clientes.
 4. Inicie o servidor e, como administrador, execute `/geracoes web` para ver os caminhos das credenciais compartilhadas iniciais.
-5. No computador do servidor, abra `http://127.0.0.1:8765` e use o token de administrador inicial. Em **Acessos**, crie um token individual para cada pessoa e revogue os compartilhados quando não forem mais necessários. O token de consulta pode ver estado, PCs, histórico, exportar e usar o simulador; somente administradores podem alterar configurações ou acessos. Para acesso remoto, configure HTTPS privado ou um túnel SSH. Veja [Administração do painel](docs/ADMIN.md).
+5. Abra o painel por HTTPS privado ou por um túnel SSH e use o token de administrador inicial. Crie tokens individuais pelo console. A credencial de consulta permite ver jogadores, PCs e histórico e usar o simulador. [Administração do painel](docs/ADMIN.md)
 
-O painel fica preso a `127.0.0.1`. **Não exponha a porta 8765 à internet nem aos jogadores.** A configuração de porta fica em `<mundo>/generation-control/web.properties`; alterá-la exige reiniciar o processo.
+O painel escuta em `127.0.0.1:1` por padrão (`port=0001`). O navegador bloqueia HTTP direto na porta 1. Para alterar a porta, edite `<mundo>/generation-control/web.properties` e reinicie o servidor.
 
 ## Compilar do código-fonte
 

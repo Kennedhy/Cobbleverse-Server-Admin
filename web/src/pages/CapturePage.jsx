@@ -1,4 +1,4 @@
-import { Notice, NumberField, Section } from '../components/ui.jsx';
+import { Notice, NumberField, Section, Toggle } from '../components/ui.jsx';
 
 export default function CapturePage({ draft, update }) {
   return <>
@@ -14,5 +14,12 @@ export default function CapturePage({ draft, update }) {
       </div>
     </Section>
     <Notice tone="warning">Master Ball continua garantida. Esta regra cobre o calculador padrão do Cobblemon; outros mods podem usar um cálculo próprio.</Notice>
+    <Section title="Taxa de shiny" description="Defina a chance usada pelo Cobblemon para gerar Pokémon shiny.">
+      <Toggle label="Definir taxa personalizada" checked={draft.shinyRate != null}
+        onChange={(enabled) => update({ shinyRate: enabled ? 2048 : null })} />
+      {draft.shinyRate != null && <NumberField label="Chance de 1 em" value={draft.shinyRate} min={1} max={1000000} step={1}
+        onChange={(shinyRate) => update({ shinyRate })} hint="Por exemplo, 2048 corresponde a uma chance em 2048." />}
+      <p className="field-hint">A taxa também vale para outros sistemas que utilizam a configuração global de shiny do Cobblemon.</p>
+    </Section>
   </>;
 }

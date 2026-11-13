@@ -33,9 +33,11 @@ public final class GenerationControl implements DedicatedServerModInitializer {
         br.com.cobbleverse.generations.integration.ValidationService.register();
         CobblemonIntegration.register();
         br.com.cobbleverse.generations.integration.ExperienceManager.register();
+        br.com.cobbleverse.generations.integration.TrainerDifficultyManager.register();
         RctIntegration.register();
         br.com.cobbleverse.generations.integration.InvocationGuard.register();
         br.com.cobbleverse.generations.integration.RescueService.register();
+        WebPanelServer.registerPlayerSessions();
         ServerLifecycleEvents.SERVER_STARTING.register(starting -> {
             server=starting;
             var report=CobblemonIntegration.validateRegistries(rules().config());

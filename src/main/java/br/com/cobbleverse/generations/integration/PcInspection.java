@@ -2,8 +2,11 @@ package br.com.cobbleverse.generations.integration;
 
 import br.com.cobbleverse.generations.mixin.StoreCacheAccessor;
 import br.com.cobbleverse.generations.mixin.StoreFactoryAccessor;
+import br.com.cobbleverse.generations.mixin.StoreManagerAccessor;
 import br.com.cobbleverse.generations.mixin.StorePathAccessor;
+import com.cobblemon.mod.common.Cobblemon;
 import com.cobblemon.mod.common.api.storage.adapter.flatfile.NBTStoreAdapter;
+import com.cobblemon.mod.common.api.storage.party.PlayerPartyStore;
 import com.cobblemon.mod.common.api.storage.pc.PCStore;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -39,15 +42,29 @@ public final class PcInspection {
 
     private PcInspection() {}
 
+    /** Dashboard summary reads at most the six slots in an already-loaded party. */
+    public static Integer loadedPartySize(UUID player) {
+        for (var factory : ((StoreManagerAccessor) (Object) Cobblemon.INSTANCE.getStorage()).generationControl$factories()) {
+            if (!(factory instanceof StoreFactoryAccessor access)) continue;
+            Object cache = access.generationControl$caches().get(PlayerPartyStore.class);
+            if (cache instanceof StoreCacheAccessor stores
+                    && stores.generationControl$cacheMap().get(player) instanceof PlayerPartyStore party) {
+                return party.occupied();
+            }
+        }
+        return null;
+    }
+
     public record Player(String name, UUID uuid, boolean online) {}
     public record PlayerPage(List<Player> players, String nextCursor) {}
     public record Directory(List<Player> online, Path savedPlayers, Path userCache) {}
-    public record Slot(int position, String species, String form, int level, boolean shiny,
-                       String nature, String ability, List<String> moves,
+    public record Slot(int position, String pokemonUuid, String species, String form, String nickname,
+                       int level, boolean shiny, String nature, String ability, List<String> moves,
                        Map<String, Integer> ivs, Map<String, Integer> evs) {}
     public record Box(int index, int boxCount, String name, String source, List<Slot> slots) {}
     public record FileStore(Path path, boolean nbt) {}
     public record Lookup(Box live, List<FileStore> files) {}
+    private record JsonBoxRead(int count, JsonObject requestedBox, JsonObject lastBox, int lastBoxIndex) {}
     private record PlayerIndex(Path directory, Path userCache, long directoryModified, long userCacheModified, long userCacheSize,
                                long createdAtNanos,
                                List<UUID> savedPlayers, Map<UUID, String> names) {}
@@ -199,7 +216,15 @@ public final class PcInspection {
     }
 
     private static boolean matches(Player player, String term) {
-        return player.name().toLowerCase(Locale.ROOT).contains(term) || player.uuid().toString().contains(term);
+        return containsIgnoreCase(player.name(), term) || player.uuid().toString().contains(term);
+    }
+
+    private static boolean containsIgnoreCase(String value, String term) {
+        if (term.isEmpty()) return true;
+        if (term.length() > value.length()) return false;
+        for (int start = 0; start <= value.length() - term.length(); start++)
+            if (value.regionMatches(true, start, term, 0, term.length())) return true;
+        return false;
     }
 
     private static UUID parseUuid(String value) {
@@ -236,8 +261,9 @@ public final class PcInspection {
             if (pokemon != null) {
                 List<String> moves = pokemon.getMoveSet().getMoves().stream()
                         .map(move -> move.getTemplate().getName()).limit(4).toList();
-                slots.add(new Slot(position, pokemon.getSpecies().getResourceIdentifier().toString(),
-                        pokemon.getForm().getName(), pokemon.getLevel(), pokemon.getShiny(),
+                slots.add(new Slot(position, pokemon.getUuid().toString(), pokemon.getSpecies().getResourceIdentifier().toString(),
+                        pokemon.getForm().formOnlyShowdownId(), pokemon.getNickname() == null ? "" : pokemon.getNickname().getString(),
+                        pokemon.getLevel(), pokemon.getShiny(),
                         pokemon.getNature().getDisplayName(), pokemon.getAbility() == null ? "" : pokemon.getAbility().getName(),
                         moves, statValues(pokemon.getIvs()), statValues(pokemon.getEvs())));
             }
@@ -251,13 +277,67 @@ public final class PcInspection {
             Box box = ReadOnlyStores.read(store.path(), file -> {
                 if (file.length() > 16L * 1024 * 1024) throw new IOException("O arquivo excede 16 MiB.");
                 if (store.nbt()) return nbtBox(NbtIo.readCompressed(file.toPath(), NbtSizeTracker.of(32L * 1024 * 1024)), requested);
-                try (var reader = Files.newBufferedReader(file.toPath())) {
-                    return jsonBox(JsonParser.parseReader(reader).getAsJsonObject(), requested);
-                }
+                return jsonBox(file.toPath(), requested);
             });
             if (box != null) return box;
         }
         return new Box(0, 0, null, "missing", List.of());
+    }
+
+    private static Box jsonBox(Path path, int requested) throws IOException {
+        JsonBoxRead read = readJsonBox(path, requested);
+        int count = validateCount(read.count());
+        if (count == 0) return new Box(0, 0, null, "saved", List.of());
+        int index = Math.min(requested, count - 1);
+        JsonObject box = index == requested ? read.requestedBox()
+                : read.lastBoxIndex() == index ? read.lastBox() : readJsonBox(path, index).requestedBox();
+        if (box == null) throw invalidPc();
+        return jsonBox(box, index, count);
+    }
+
+    /** Stream the store and retain only the requested box instead of the full PC JSON tree. */
+    private static JsonBoxRead readJsonBox(Path path, int requested) throws IOException {
+        try (var input = new JsonReader(Files.newBufferedReader(path))) {
+            if (input.peek() != JsonToken.BEGIN_OBJECT) throw invalidPc();
+            input.beginObject();
+            int count = -1;
+            JsonObject requestedBox = null;
+            JsonObject lastBox = null;
+            int lastBoxIndex = -1;
+            while (input.hasNext()) {
+                String key = input.nextName();
+                if (key.equals("BoxCount")) {
+                    count = input.nextInt();
+                } else {
+                    int boxIndex = boxIndex(key);
+                    if (boxIndex == requested || (count > 0 && boxIndex == count - 1)) {
+                        JsonElement value = JsonParser.parseReader(input);
+                        if (!value.isJsonObject()) throw invalidPc();
+                        JsonObject box = value.getAsJsonObject();
+                        if (boxIndex == requested) requestedBox = box;
+                        if (boxIndex == count - 1) {
+                            lastBoxIndex = boxIndex;
+                            lastBox = box;
+                        }
+                    } else {
+                        input.skipValue();
+                    }
+                }
+            }
+            input.endObject();
+            if (input.peek() != JsonToken.END_DOCUMENT || count < 0) throw invalidPc();
+            return new JsonBoxRead(count, requestedBox, lastBox, lastBoxIndex);
+        }
+    }
+
+    private static int boxIndex(String key) {
+        if (!key.startsWith("Box") || key.length() <= 3) return -1;
+        try {
+            int index = Integer.parseInt(key.substring(3));
+            return index >= 0 && index < 4096 ? index : -1;
+        } catch (NumberFormatException invalid) {
+            return -1;
+        }
     }
 
     static Box jsonBox(JsonObject store, int requested) {
@@ -265,11 +345,17 @@ public final class PcInspection {
         if (count == 0) return new Box(0, 0, null, "saved", List.of());
         int index = Math.min(requested, count - 1);
         JsonObject box = store.getAsJsonObject("Box" + index);
+        if (box == null) throw invalidPc();
+        return jsonBox(box, index, count);
+    }
+
+    private static Box jsonBox(JsonObject box, int index, int count) {
         List<Slot> slots = new ArrayList<>();
         for (int position = 0; position < SLOTS; position++) {
             JsonObject pokemon = box.getAsJsonObject("Slot" + position);
             if (pokemon == null) continue;
-            slots.add(new Slot(position, jsonText(pokemon, "Species"), jsonText(pokemon, "FormId"),
+            slots.add(new Slot(position, jsonUuid(pokemon), jsonText(pokemon, "Species"), jsonText(pokemon, "FormId"),
+                    jsonNickname(pokemon),
                     pokemon.has("Level") ? pokemon.get("Level").getAsInt() : 1,
                     pokemon.has("Shiny") && pokemon.get("Shiny").getAsBoolean(),
                     jsonName(pokemon.get("Nature")), jsonName(pokemon.get("Ability")),
@@ -291,7 +377,8 @@ public final class PcInspection {
             if (!box.contains(key)) continue;
             if (!box.contains(key, NbtElement.COMPOUND_TYPE)) throw invalidPc();
             NbtCompound pokemon = box.getCompound(key);
-            slots.add(new Slot(position, pokemon.getString("Species"), pokemon.getString("FormId"),
+            slots.add(new Slot(position, nbtUuid(pokemon), pokemon.getString("Species"), pokemon.getString("FormId"),
+                    nbtNickname(pokemon),
                     pokemon.contains("Level", NbtElement.NUMBER_TYPE) ? pokemon.getInt("Level") : 1,
                     pokemon.getBoolean("Shiny"), nbtName(pokemon.get("Nature")), nbtName(pokemon.get("Ability")),
                     nbtMoves(pokemon), nbtStats(pokemon.get("IVs")), nbtStats(pokemon.get("EVs"))));
@@ -306,6 +393,83 @@ public final class PcInspection {
 
     private static String jsonText(JsonObject object, String key) {
         return object.has(key) ? object.get(key).getAsString() : "";
+    }
+
+    private static String jsonUuid(JsonObject pokemon) {
+        for (String key : List.of("UUID", "uuid", "Uuid")) {
+            if (!pokemon.has(key) || pokemon.get(key).isJsonNull()) continue;
+            JsonElement value = pokemon.get(key);
+            if (value.isJsonPrimitive()) {
+                UUID parsed = parseUuid(value.getAsString());
+                if (parsed != null) return parsed.toString();
+            } else if (value.isJsonArray() && value.getAsJsonArray().size() == 4) {
+                try {
+                    var values = value.getAsJsonArray();
+                    long most = ((long) values.get(0).getAsInt() << 32) | (values.get(1).getAsInt() & 0xffffffffL);
+                    long least = ((long) values.get(2).getAsInt() << 32) | (values.get(3).getAsInt() & 0xffffffffL);
+                    return new UUID(most, least).toString();
+                } catch (RuntimeException ignored) { }
+            }
+        }
+        if (pokemon.has("UUIDMost") && pokemon.has("UUIDLeast")) try {
+            return new UUID(pokemon.get("UUIDMost").getAsLong(), pokemon.get("UUIDLeast").getAsLong()).toString();
+        } catch (RuntimeException ignored) { }
+        return "";
+    }
+
+    private static String jsonNickname(JsonObject pokemon) {
+        JsonElement value = pokemon.has("Nickname") ? pokemon.get("Nickname") : pokemon.get("nickname");
+        return jsonComponentText(value);
+    }
+
+    private static String jsonComponentText(JsonElement value) {
+        if (value == null || value.isJsonNull()) return "";
+        if (value.isJsonPrimitive()) return value.getAsString();
+        if (!value.isJsonObject()) return "";
+        JsonObject object = value.getAsJsonObject();
+        if (object.has("text") && object.get("text").isJsonPrimitive()) return object.get("text").getAsString();
+        if (object.has("Text") && object.get("Text").isJsonPrimitive()) return object.get("Text").getAsString();
+        if (object.has("extra") && object.get("extra").isJsonArray()) {
+            StringBuilder text = new StringBuilder();
+            for (JsonElement part : object.getAsJsonArray("extra")) text.append(jsonComponentText(part));
+            return text.toString();
+        }
+        return "";
+    }
+
+    private static String nbtUuid(NbtCompound pokemon) {
+        for (String key : List.of("UUID", "uuid", "Uuid")) {
+            if (!pokemon.contains(key)) continue;
+            try {
+                NbtElement value = pokemon.get(key);
+                if (value instanceof net.minecraft.nbt.NbtString string) {
+                    UUID parsed = parseUuid(string.asString());
+                    if (parsed != null) return parsed.toString();
+                } else if (value instanceof net.minecraft.nbt.NbtIntArray) {
+                    return pokemon.getUuid(key).toString();
+                }
+            } catch (RuntimeException ignored) { }
+        }
+        if (pokemon.contains("UUIDMost", NbtElement.NUMBER_TYPE) && pokemon.contains("UUIDLeast", NbtElement.NUMBER_TYPE))
+            return new UUID(pokemon.getLong("UUIDMost"), pokemon.getLong("UUIDLeast")).toString();
+        return "";
+    }
+
+    private static String nbtNickname(NbtCompound pokemon) {
+        NbtElement value = pokemon.contains("Nickname") ? pokemon.get("Nickname") : pokemon.get("nickname");
+        return nbtComponentText(value);
+    }
+
+    private static String nbtComponentText(NbtElement value) {
+        if (value instanceof net.minecraft.nbt.NbtString string) return string.asString();
+        if (!(value instanceof NbtCompound object)) return "";
+        for (String key : List.of("text", "Text")) if (object.contains(key, NbtElement.STRING_TYPE)) return object.getString(key);
+        if (object.contains("extra", NbtElement.LIST_TYPE)) {
+            StringBuilder text = new StringBuilder();
+            for (NbtElement part : object.getList("extra", NbtElement.COMPOUND_TYPE)) text.append(nbtComponentText(part));
+            return text.toString();
+        }
+        return "";
     }
 
     private static Map<String, Integer> statValues(com.cobblemon.mod.common.pokemon.PokemonStats stats) {

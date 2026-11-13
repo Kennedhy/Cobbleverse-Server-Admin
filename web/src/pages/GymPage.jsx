@@ -18,7 +18,6 @@ export default function GymPage({ draft, update }) {
   }));
   const initialRegion = options.some((option) => option.value === draft.initialRegion) ? draft.initialRegion : options[0]?.value || 'freeroam';
   return <>
-    <div className="page-intro"><h1>Ginásios</h1><p>Associe circuitos às gerações e escolha a ordem inicial do servidor.</p></div>
     <Section title="Circuitos disponíveis" description="A região inicial é compartilhada. Progresso e insígnias continuam individuais por jogador.">
       <Toggle label="Associar circuitos às gerações selecionadas automaticamente" checked={draft.automaticRegions}
         onChange={(automaticRegions) => update({ automaticRegions })} />

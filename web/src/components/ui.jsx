@@ -1,10 +1,11 @@
 import { Check, Info, LoaderCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-export function Section({ title, description, children, className = '' }) {
+export function Section({ title, description, children, className = '', action }) {
   return <section className={`section ${className}`}>
     <div className="section-head">
       <div><h2>{title}</h2>{description && <p>{description}</p>}</div>
+      {action}
     </div>
     {children}
   </section>;

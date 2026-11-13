@@ -2,6 +2,17 @@
 
 O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este documento separa o que foi observado do que ainda precisa de servidor e jogadores reais.
 
+## Candidato 0.6.0 — build e smoke local
+
+- `gradlew.bat --no-daemon --max-workers=1 remapJar` e `npm run build` passaram localmente. O verificador server-only confirmou o JAR `0.6.0` com 150 classes, 35 mixins, assets web e 499.861 bytes. A suíte `gradlew test` não foi executada nesta preparação; o workflow Build a executará após o push.
+- Um servidor temporário iniciou em uma cópia isolada do pack, com mundo próprio `dashboard-test-060`, Minecraft na porta `25586` e painel em `127.0.0.1:18766`. O runtime carregou Minecraft 1.21.1, RCT 0.18.1-beta, RCT API 0.15.2-beta e CobbleDollars 2.0.0 Beta 5.1. Nenhum mundo ou configuração da instância original foi usado para o smoke.
+- Em navegador Edge desktop, viewport 1440×960: login admin, dashboard, Treinadores, aparições/recompensas e dificuldade por grupos abriram sem erros JavaScript. Foram capturadas telas das duas abas em `cobbleverse-trainer-operations-060.png` e `cobbleverse-trainer-difficulty-060.png` na pasta temporária do computador.
+- `/api/dashboard` respondeu 200, listou zero jogadores (nenhum cliente entrou), manteve a ação de reinício disponível pelo supervisor e não retornou campos de TPS, heap ou CPU. `/api/trainer-operations` respondeu 200 com 14 opções RCT e CobbleDollars disponível. A chance de spawn foi alterada de 0,55 para 0,56 e restaurada a 0,55. O multiplicador e a opção de pagamento NPC do CobbleDollars também foram alterados pela API, gravados no mod integrado e restaurados; as novas leituras confirmaram os valores anteriores.
+- `/api/trainer-difficulty` carregou 1.559 treinadores e 10 categorias RCT. O painel gravou e recarregou dois grupos de demonstração e um perfil combinado no mundo descartável. A credencial viewer leu a configuração (200) e teve a gravação recusada (403).
+- O primeiro acesso ao catálogo identificou que o RCT termina de registrar treinadores depois do evento inicial do servidor. A versão 0.6.0 agora deixa o catálogo retryable enquanto vazio e tenta atualizar sob demanda ao abrir a página; o smoke após reiniciar com o JAR corrigido confirmou 1.559 entradas.
+- O primeiro boot da cópia ficou aproximadamente 5 segundos atrás enquanto o pack registrava treinadores e otimizava tabelas de spawn. Esse boot sem jogadores não mede custo contínuo nem desempenho do addon. Não foi feito benchmark A/B de MSPT, TPS, heap ou GC.
+- Sem um jogador conectado, não foram exercitados no runtime a edição real de PC/progresso, batalhas, bloqueio PvE/PvP ou recompensa após vencer treinador. Esses caminhos compilaram; dependem de uma sessão com jogador para smoke representativo.
+
 ## Build 0.5.0
 
 O Build [42505562693](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42505562693) passou no commit `ff38354`: testes, JAR remapeado, auditoria server-only e fixture de smoke separado. O JAR tem 129 classes, 33 mixins e 418.031 bytes; o smoke confirmou o SHA-256 `73d68e66d65c1681473dbe8e5106191661d67fcd9aa84fbe70c6e7ad1b0712f0`. As mudanças estão no `main`; nenhuma nova release foi criada.
@@ -87,16 +98,16 @@ Esse teste não validou host dedicado via SSH, carga real, migração de progres
 
 | Área | Estado | Observação |
 | --- | --- | --- |
-| Compilação e empacotamento | Build `42505562693` concluído | Testes, JAR remapeado e auditoria server-only |
-| Metadados server-only | Verificados no Build `42505562693` | JAR server-only; cliente entrou sem o JAR no smoke `42505819843` |
-| Painel HTTP, token e sessão | Smoke `42505819843` observado | Login autenticado, estado e métricas no servidor temporário |
-| Regras de geração/XP/cap | Smoke `42505819843` observado | Simulação ao vivo de geração, XP por grupo/jogador e cap global |
-| PC dos jogadores | Smoke `42505819843` observado no pack | Consulta autenticada ao PC ao vivo e salvo após reinício |
-| Prévia de armazenamento | Smoke `42505819843` observado no pack | Reavaliou somente o store mudado durante a validação |
-| Cliente do pack sem o addon | Smoke `42505819843` conectado em Linux | [Execução do smoke mais recente](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42505819843) |
-| Aplicação seletiva de XP, níveis e captura | Smoke `42505819843` observado | Estado aplicado ao vivo e restaurado ao descartar revisão pendente |
-| Política de geração e ginásios do pack | Smoke `42505819843` observado | 552 spawns, 9 estruturas Kanto carregadas e 1.714 equipes RCT verificadas |
-| Captura e nível selvagem/RCT | Smoke `42505819843` observado | Amostras de Poké Ball/Ultra Ball e caps 20/35 em evento de spawn conectado |
+| Compilação e empacotamento 0.6.0 | Build local concluído | `compileJava`, `remapJar`, `npm run build` e auditoria server-only; workflow Build ainda executará a suíte automatizada |
+| Metadados server-only | Verificados no JAR 0.6.0 | 150 classes, 35 mixins e assets web; sem classes cliente |
+| Login, dashboard e reinício | Smoke local 0.6.0 observado | Login admin, players, reinício disponível via supervisor; sem campos de monitoramento de servidor |
+| Aparições e recompensas | Smoke local 0.6.0 observado | API RCT e CobbleDollars; mudança de spawn aplicada e restaurada |
+| Dificuldade por grupos | Smoke local 0.6.0 observado | Catálogo de 1.559 treinadores/10 categorias, dois grupos, perfil combinado persistido; viewer GET 200 e PUT 403 |
+| PC e progressão individual | Build local concluído | Consultas/edições compilam; requer jogador conectado para validar dados reais ao vivo |
+| Batalhas PvE/PvP acima do cap | Build local concluído | Hooks compilam; falta batalha real para verificar bloqueio, troca de Pokémon e isenção PvP |
+| Gerações, ginásios, XP, níveis e captura | Smoke `42505819843` observado | Ver os resultados históricos do pack no Build 0.5.0 abaixo |
+| Cliente do pack sem o addon | Smoke `42505819843` conectado em Linux | [Execução do smoke histórico](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42505819843) |
+| Acesso privado e desempenho sob carga | Pendente | Requer host dedicado, jogadores e benchmark A/B representativos |
 | Tailscale Serve ou túnel SSH no host de destino | Pendente | Requer host acessível pela rede privada |
 | TPS, heap e memória sob carga | Pendente | Sem benchmark A/B representativo |
 

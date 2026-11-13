@@ -4,6 +4,18 @@ Notable changes for each release are recorded here. Versions follow `MAJOR.MINOR
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-11-13 — Preview
+
+- Allow administrators to add, edit, and delete Pokémon in player PCs from the web panel, including nickname, species/form, level, shiny, nature, ability, moves, IVs, and EVs.
+- Keep viewer credentials read-only, confirm deletions, reject stale slot edits, and persist changes through Cobblemon's file-backed store API.
+- Add configurable PvE level-cap rules: block the whole battle or only prevent an over-cap Pokémon from entering. PvP is always exempt from level-cap battle blocks.
+- Add individual RCT progression management from the player PC page: select an allowed series and edit defeated trainers, with a saved-progress ledger, stale-data checks, and edit history. RCT progress edits require the player to be online and outside battle.
+- Add grouped RCT trainer difficulty profiles for trainer categories/IDs and player UUID groups. Profiles adjust level, minimum IVs, and EVs on battle-only trainer Pokémon copies; PvP, wild Pokémon, and original datapack teams are untouched.
+- Add a trainer management page for RCT spawn chance, intervals, limits, distances, and trainer-card/association rules. These controls use RCT's live configuration API.
+- Add CobbleDollars NPC payout control and income multiplier. The multiplier is global and also affects wild Pokémon earnings; CobbleDollars does not expose per-trainer reward amounts.
+- Add an optional shiny appearance-rate override using Cobblemon's global shiny setting and include it in live gameplay apply/discard.
+- Keep trainer settings out of the main configuration draft: their pages save through authenticated admin routes, while viewer sessions remain read-only.
+
 ## [0.5.0] — 2026-11-08 — Preview
 
 - Apply saved XP, wild-level, and capture settings selectively at runtime; keep generation, gym, datapack, and world policies pending until restart.

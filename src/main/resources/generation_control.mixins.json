@@ -35,7 +35,9 @@
     "TrainerProgressAccessor",
     "RctExperienceMixin",
     "RctLevelCapMixin",
-    "CaptureCalculatorMixin"
+    "CaptureCalculatorMixin",
+    "ShinyRateMixin",
+    "OverCapBattleSwitchMixin"
   ],
   "injectors": {
     "defaultRequire": 1

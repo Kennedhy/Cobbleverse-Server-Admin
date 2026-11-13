@@ -29,7 +29,7 @@ class PcInspectionTest {
         assertEquals("Eventos", box.name());
         assertEquals(2, box.boxCount());
         var pokemon = box.slots().getFirst();
-        assertEquals(new PcInspection.Slot(11, "cobblemon:pikachu", "cosplay", 22, true,
+        assertEquals(new PcInspection.Slot(11, "", "cobblemon:pikachu", "cosplay", "", 22, true,
                 "hardy", "static", List.of("thunderbolt", "quick-attack"),
                 java.util.Map.of("hp", 31, "atk", 28), java.util.Map.of("hp", 252, "spe", 252)), pokemon);
     }
@@ -45,7 +45,7 @@ class PcInspectionTest {
         var store = new NbtCompound();
         store.putInt("BoxCount", 1);
         store.put("Box0", rawBox);
-        assertEquals(List.of(new PcInspection.Slot(29, "cobblemon:bulbasaur", "", 7, false,
+        assertEquals(List.of(new PcInspection.Slot(29, "", "cobblemon:bulbasaur", "", "", 7, false,
                         "bold", "", List.of(), java.util.Map.of(), java.util.Map.of())),
                 PcInspection.nbtBox(store, 0).slots());
         assertEquals("missing", PcInspection.savedBox(

@@ -6,7 +6,8 @@ import { Loading, Notice, Section } from '../components/ui.jsx';
 const labels = {
   selectedGeneration: 'Geração selecionada', generations: 'Gerações permitidas', mode: 'Modo de geração',
   manageGyms: 'Gerenciar ginásios', manageExperience: 'Gerenciar XP e níveis', globalXpMultiplier: 'Multiplicador global de XP',
-  globalLevelCap: 'Limite global de nível', levelCapMode: 'Origem do limite de nível', wildLevelBehavior: 'Comportamento do nível selvagem', captureMultiplier: 'Multiplicador de captura',
+  globalLevelCap: 'Limite global de nível', levelCapMode: 'Origem do limite de nível', wildLevelBehavior: 'Comportamento do nível selvagem',
+  blockOverCapPokemonInBattles: 'Bloquear batalhas acima do limite', overCapBattleBehavior: 'Regra acima do cap em PvE', captureMultiplier: 'Multiplicador de captura',
   regions: 'Regiões permitidas', initialRegion: 'Região inicial', excludedSpecies: 'Espécies excluídas', includedSpecies: 'Exceções permitidas',
   playerXpGroups: 'Grupos de XP por jogador', groupXpMultipliers: 'Multiplicadores dos grupos', playerXpMultipliers: 'Multiplicadores individuais',
   automaticRegions: 'Regiões automáticas', regionalForms: 'Formas regionais', megaEvolutions: 'Megaevoluções',
@@ -25,7 +26,7 @@ function displayValue(value) {
   return value === 'true' ? 'Ativado' : value === 'false' ? 'Desativado' : value;
 }
 
-export default function HistoryPage({ state, onRestoreRevision, canEdit }) {
+export default function HistoryPage({ state, onRestoreRevision, onRestore, onDiscard, canEdit, busy }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [entries, setEntries] = useState(null);
   const [entryError, setEntryError] = useState('');
@@ -58,6 +59,13 @@ export default function HistoryPage({ state, onRestoreRevision, canEdit }) {
 
   return <>
     <div className="page-intro"><h1>Histórico</h1><p>Compare alterações salvas e prepare uma revisão anterior para o próximo reinício.</p></div>
+    {state.startupWarning && <Notice tone="warning">{state.startupWarning}</Notice>}
+    {canEdit && (state.hasPrevious || state.pending) && <Section title="Recuperação">
+      <div className="recovery-actions">
+        {state.hasPrevious && <button className="button button-quiet" type="button" disabled={busy} onClick={onRestore}>Restaurar revisão anterior</button>}
+        {state.pending && <button className="button button-danger" type="button" disabled={busy} onClick={onDiscard}>Descartar alterações pendentes</button>}
+      </div>
+    </Section>}
     <Section title="Revisões recentes" description="Até 50 alterações. O histórico é somente leitura; restaurar cria uma nova revisão pendente.">
       <div className="section-toolbar history-toolbar">
         <span className="field-hint">Revisão ativa {state.active.revision}{state.pending && ` · pendente ${state.pending.revision}`}</span>

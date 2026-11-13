@@ -7,7 +7,6 @@ import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
-import java.text.Normalizer;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.ArrayList;
@@ -22,13 +21,9 @@ import java.util.concurrent.Executor;
 /** One policy directory per world. A staged revision never changes the live policy. */
 public final class ConfigStore {
     public static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
-    private static final int MAX_PRESETS = 20;
-    private static final Object PRESET_IO_LOCK = new Object();
     public record HistoryEntry(long revision, String author, String time, long basedOnRevision, int changedFields) {}
     public record FieldChange(String field, String before, String after) {}
     public record HistoryDetail(long revision, String author, String time, long basedOnRevision, List<FieldChange> changes) {}
-    public record PresetInfo(String id, String name, String updatedAt) {}
-    private record SavedPreset(String name, String updatedAt, GenerationConfig config) {}
     public static String fingerprint(GenerationConfig config) {
         try {
             byte[] bytes=GSON.toJson(config).getBytes(StandardCharsets.UTF_8);
@@ -432,102 +427,6 @@ public final class ConfigStore {
         ChangeRecord change = readChange(file);
         return new HistoryDetail(revision, safeAuthor(change.author), safeTime(change.time),
                 change.previousActiveRevision, changedFields(change.before, change.after));
-    }
-
-    public List<PresetInfo> listPresets() throws IOException {
-        synchronized (PRESET_IO_LOCK) {
-            Path presets = directory.resolve("presets");
-            if (!Files.isDirectory(presets)) return List.of();
-            List<Path> files;
-            try (Stream<Path> stream = Files.list(presets)) {
-                files = stream.filter(path -> path.getFileName().toString().matches("[a-z0-9]+(?:-[a-z0-9]+)*\\.json"))
-                        .sorted(Comparator.comparing(path -> path.getFileName().toString())).limit(MAX_PRESETS + 1L).toList();
-            }
-            if (files.size() > MAX_PRESETS) throw new IOException("O diretório contém mais presets do que o limite permitido.");
-            List<PresetInfo> result = new ArrayList<>(files.size());
-            for (Path file : files) {
-                SavedPreset preset = readPresetFile(file);
-                String filename = file.getFileName().toString();
-                result.add(new PresetInfo(filename.substring(0, filename.length() - 5), preset.name(), preset.updatedAt()));
-            }
-            return List.copyOf(result);
-        }
-    }
-
-    public GenerationConfig preset(String id) throws IOException {
-        synchronized (PRESET_IO_LOCK) {
-            Path file = presetPath(id);
-            if (!Files.isRegularFile(file)) throw new IllegalStateException("O preset não existe.");
-            return readPresetFile(file).config().copy();
-        }
-    }
-
-    public PresetInfo savePreset(String name, GenerationConfig candidate) throws IOException {
-        String cleanName = validatePresetName(name);
-        String id = presetId(cleanName);
-        GenerationConfig config = candidate.copy().validated();
-        synchronized (PRESET_IO_LOCK) {
-            Path presets = directory.resolve("presets");
-            Files.createDirectories(presets);
-            Path target = presetPath(id);
-            if (!Files.isRegularFile(target)) {
-                try (Stream<Path> stream = Files.list(presets)) {
-                    long count = stream.filter(path -> path.getFileName().toString().matches("[a-z0-9]+(?:-[a-z0-9]+)*\\.json")).count();
-                    if (count >= MAX_PRESETS) throw new IllegalStateException("O servidor permite até " + MAX_PRESETS + " presets nomeados.");
-                }
-            } else {
-                SavedPreset previous = readPresetFile(target);
-                if (!previous.name().equalsIgnoreCase(cleanName))
-                    throw new IllegalStateException("Esse nome gera o mesmo identificador de outro preset.");
-            }
-            String updatedAt = Instant.now().toString();
-            write(target, new SavedPreset(cleanName, updatedAt, config));
-            return new PresetInfo(id, cleanName, updatedAt);
-        }
-    }
-
-    public void deletePreset(String id) throws IOException {
-        synchronized (PRESET_IO_LOCK) {
-            Path target = presetPath(id);
-            if (!Files.isRegularFile(target)) throw new IllegalStateException("O preset não existe.");
-            Files.delete(target);
-        }
-    }
-
-    private Path presetPath(String id) {
-        if (id == null || id.length() > 48 || !id.matches("[a-z0-9]+(?:-[a-z0-9]+)*"))
-            throw new IllegalArgumentException("Identificador de preset inválido.");
-        Path presets = directory.resolve("presets").normalize();
-        Path target = presets.resolve(id + ".json").normalize();
-        if (!target.getParent().equals(presets)) throw new IllegalArgumentException("Identificador de preset inválido.");
-        return target;
-    }
-
-    private SavedPreset readPresetFile(Path file) throws IOException {
-        if (!Files.isRegularFile(file) || Files.size(file) > 65536) throw new IOException("Preset ausente ou acima do limite de 64 KiB.");
-        SavedPreset preset;
-        try { preset = GSON.fromJson(Files.readString(file, StandardCharsets.UTF_8), SavedPreset.class); }
-        catch (RuntimeException invalid) { throw new IOException("Preset inválido.", invalid); }
-        if (preset == null || preset.name() == null || preset.config() == null || preset.updatedAt() == null)
-            throw new IOException("Preset incompleto.");
-        try { preset.config().validated(); }
-        catch (RuntimeException invalid) { throw new IOException("Configuração do preset inválida.", invalid); }
-        return preset;
-    }
-
-    private static String validatePresetName(String value) {
-        String name = value == null ? "" : value.trim();
-        if (name.isEmpty() || name.length() > 48 || !name.codePoints().allMatch(c -> Character.isLetterOrDigit(c) || c == ' ' || c == '_' || c == '-'))
-            throw new IllegalArgumentException("Use um nome de 1 a 48 letras, números, espaços, hífens ou sublinhados.");
-        String id = presetId(name);
-        if (id.isEmpty() || id.length() > 48)
-            throw new IllegalArgumentException("O nome precisa gerar um identificador de até 48 caracteres.");
-        return name;
-    }
-
-    private static String presetId(String name) {
-        String ascii = Normalizer.normalize(name, Normalizer.Form.NFD).replaceAll("\\p{M}+", "").toLowerCase(java.util.Locale.ROOT);
-        return ascii.replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
     }
 
     private record ChangeRecord(String author, String time, long previousActiveRevision,
