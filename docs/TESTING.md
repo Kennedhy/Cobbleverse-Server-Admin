@@ -2,9 +2,9 @@
 
 O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este documento separa o que foi observado do que ainda precisa de servidor e jogadores reais.
 
-## Candidato 0.6.0 — build e smoke local
+## Versão 0.6.0 Preview — build e smoke local
 
-- `gradlew.bat --no-daemon --max-workers=1 remapJar` e `npm run build` passaram localmente. O verificador server-only confirmou o JAR `0.6.0` com 150 classes, 35 mixins, assets web e 499.861 bytes. O workflow [Build 43488904151](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/43488904151) passou no commit `fa04f52`, incluindo a suíte automatizada, o empacotamento e a auditoria server-only.
+- `gradlew.bat --no-daemon --max-workers=1 remapJar` e `npm run build` passaram localmente. O workflow [Build 43489280795](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/43489280795) passou no commit final `3192c0e`, incluindo a suíte automatizada, o empacotamento e a auditoria server-only. A [release preview v0.6.0](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases/tag/v0.6.0) publicou o JAR, o helper SSH, o preparador da pasta de mods e `SHA256SUMS.txt`; o JAR baixado também passou pelo verificador server-only (150 classes, 35 mixins, 499.847 bytes).
 - Um servidor temporário iniciou em uma cópia isolada do pack, com mundo próprio `dashboard-test-060`, Minecraft na porta `25586` e painel em `127.0.0.1:18766`. O runtime carregou Minecraft 1.21.1, RCT 0.18.1-beta, RCT API 0.15.2-beta e CobbleDollars 2.0.0 Beta 5.1. Nenhum mundo ou configuração da instância original foi usado para o smoke.
 - Em navegador Edge desktop, viewport 1440×960: login admin, dashboard, Treinadores, aparições/recompensas e dificuldade por grupos abriram sem erros JavaScript. Foram capturadas telas das duas abas em `cobbleverse-trainer-operations-060.png` e `cobbleverse-trainer-difficulty-060.png` na pasta temporária do computador.
 - `/api/dashboard` respondeu 200, listou zero jogadores (nenhum cliente entrou), manteve a ação de reinício disponível pelo supervisor e não retornou campos de TPS, heap ou CPU. `/api/trainer-operations` respondeu 200 com 14 opções RCT e CobbleDollars disponível. A chance de spawn foi alterada de 0,55 para 0,56 e restaurada a 0,55. O multiplicador e a opção de pagamento NPC do CobbleDollars também foram alterados pela API, gravados no mod integrado e restaurados; as novas leituras confirmaram os valores anteriores.
@@ -98,7 +98,7 @@ Esse teste não validou host dedicado via SSH, carga real, migração de progres
 
 | Área | Estado | Observação |
 | --- | --- | --- |
-| Compilação e empacotamento 0.6.0 | Build `43488904151` concluído | Testes automatizados, JAR remapeado e auditoria server-only; build local e `npm run build` também passaram |
+| Compilação e empacotamento 0.6.0 | Build `43489280795` concluído | Testes automatizados, JAR remapeado e auditoria server-only; o JAR publicado também foi baixado e verificado |
 | Metadados server-only | Verificados no JAR 0.6.0 | 150 classes, 35 mixins e assets web; sem classes cliente |
 | Login, dashboard e reinício | Smoke local 0.6.0 observado | Login admin, players, reinício disponível via supervisor; sem campos de monitoramento de servidor |
 | Aparições e recompensas | Smoke local 0.6.0 observado | API RCT e CobbleDollars; mudança de spawn aplicada e restaurada |
