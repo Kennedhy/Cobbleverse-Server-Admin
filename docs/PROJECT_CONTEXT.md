@@ -107,7 +107,8 @@ Eventos especiais ou dados econômicos mais granulares continuam como possibilid
 
 ## Estado registrado neste repasse
 
-- A release pública mais recente continua 0.6.0 preview; as mudanças posteriores seguem agrupadas em `Unreleased`, sem criar uma versão para cada ajuste.
+- A release pública mais recente é `v0.7.0` preview, publicada em 14 de novembro de 2026 com o mercado/GTS, cotas lendárias, controles de combate selvagem e os ajustes de desempenho deste ciclo. Continue agrupando alterações menores em `Unreleased`.
+- A release `v0.7.0` passou pelo workflow de build e auditoria server-only. Os assets publicados foram baixados e os checksums conferidos; JAR e evidências estão registrados em `docs/TESTING.md`.
 - O GTS/leilões passou por smoke local com o Cobbleverse 1.7.42, Cobblemon 1.7.3, CobbleDollars 2.0.0 Beta 5.1 e cliente conectado sem o addon. GUI aberta, custódia de Pokémon/itens, compra, lances, reembolso, entrega ao vencedor e pagamento pendente foram exercitados. A transação foi chamada pelo fixture de servidor; cliques manuais e captura visual não foram testados.
 - A revisão atual indexa grupos/perfis RCT ao salvar regras, reutiliza tabelas ponderadas de raid em cache limitado e reduz alocações/custos de busca na verificação de batalhas e recuperação de inventário. Build local, 66 testes, auditoria server-only e smoke de raids no pack passaram. Ainda não há benchmark A/B de MSPT, heap ou TPS em servidor dedicado nem smoke de batalha real de treinador. Consulte `docs/TESTING.md`.
-- O workspace pode conter alterações locais não commitadas de funções e redesign do painel. Preserve-as ao continuar; não faça commit, push, tag ou release sem instrução específica nesta etapa.
+- Preserve quaisquer alterações locais ao continuar; não faça commit, push, tag ou release em etapas futuras sem instrução específica para aquela etapa.

@@ -8,6 +8,7 @@ O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este doc
 - O verificador encontrou 184 classes, 37 mixins e 743.384 bytes no JAR; os assets web estavam presentes e não houve referências a classes client-only.
 - Os smokes conectados de GTS/leilões e de configuração Fight or Flight, além do smoke dos limites lendários, estão descritos nas seções abaixo. O preview ainda não tem benchmark A/B em host dedicado, teste visual/manual completo da GUI do mercado ou batalha real de treinador após esta revisão.
 - O workflow de release também executa os testes e a auditoria server-only antes de montar os assets publicados.
+- O workflow [Release 43642158500](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/43642158500) passou e publicou a tag `v0.7.0`. Baixei os quatro assets e os três arquivos listados em `SHA256SUMS.txt` conferiram; o JAR publicado passou novamente no verificador server-only. SHA-256: `636a72d3951522eaed7f4509ec94bfa958237926259e74394cbae5310afa7ca5`.
 
 ## Limites lendários — build e smoke local (2026-11-14)
 
