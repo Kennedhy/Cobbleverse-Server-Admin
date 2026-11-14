@@ -4,6 +4,8 @@ Notable changes for each release are recorded here. Versions follow `MAJOR.MINOR
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-11-14 — Preview
+
 - Add an additional legendary capture multiplier and editable per-species/form caps shared by the entire world; count player parties, offline PCs, and Pokémon held in GTS escrow.
 - Build the legendary population index once per world startup in bounded batches, then keep it current from Cobblemon gain, release, evolution, capture, PC-admin, and GTS events without recurring PC scans.
 - Add a searchable generation-grouped legendary table to the web panel with current world counts, live-editable caps, and explicit unlimited values.
@@ -18,6 +20,7 @@ Notable changes for each release are recorded here. Versions follow `MAJOR.MINOR
 - Index RCT player/trainer groups and difficulty profiles on configuration changes, cache filtered raid weight tables, avoid unnecessary Primal property allocations during battles, and use direct transaction lookup when cleaning player inventory markers.
 - Retry transient busy responses a bounded number of times for read-only player PC queries, with cancellation when the user changes the selected player or page.
 - Add a private-panel page for Fight or Flight wild aggression thresholds, attack levels, darkness behavior, optional ranged attacks, and direct melee/ranged damage to players; preserve untouched config values and require a server restart to apply edits.
+- Refresh verification checksums for Fabric API artifacts republished upstream and validate them against the matching packaged release.
 
 ## [0.6.0] — 2026-11-13 — Preview
 
