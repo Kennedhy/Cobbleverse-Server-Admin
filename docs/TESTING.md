@@ -2,6 +2,13 @@
 
 O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este documento separa o que foi observado do que ainda precisa de servidor e jogadores reais.
 
+## Versão 0.7.0 Preview — build para release (2026-11-14)
+
+- O workflow [Build 43641701925](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/43641701925), no commit `8411d0a`, passou em `test remapJar remapVerificationJar`, criou o JAR `0.7.0`, confirmou o artefato server-only e publicou os artefatos de CI.
+- O verificador encontrou 184 classes, 37 mixins e 743.384 bytes no JAR; os assets web estavam presentes e não houve referências a classes client-only.
+- Os smokes conectados de GTS/leilões e de configuração Fight or Flight, além do smoke dos limites lendários, estão descritos nas seções abaixo. O preview ainda não tem benchmark A/B em host dedicado, teste visual/manual completo da GUI do mercado ou batalha real de treinador após esta revisão.
+- O workflow de release também executa os testes e a auditoria server-only antes de montar os assets publicados.
+
 ## Limites lendários — build e smoke local (2026-11-14)
 
 ### Revisão geral em andamento
@@ -41,10 +48,10 @@ Esta auditoria descreve os caminhos inspecionados, não garante ausência de pau
 - A credencial viewer consultou a página, mas recebeu 403 ao tentar salvar; uma revisão desatualizada foi recusada com 409. A configuração, as propriedades do servidor, o JAR e o fixture da cópia foram restaurados após o smoke; as portas temporárias foram liberadas. A instância original do launcher não foi modificada.
 - O smoke confirma o gerenciamento e a persistência dos controles de Fight or Flight, não uma batalha com jogador conectado. A agressão e o dano efetivos em jogo ainda precisam ser observados com um jogador no mundo; não houve benchmark de TPS, MSPT, heap ou GC.
 
-## GTS e leilões — verificação atual (2026-11-14)
+## GTS e leilões — smoke do candidato 0.7.0 (2026-11-14)
 
 - A revisão de performance adicionou índices de grupos/perfis RCT para o caminho de início de batalha, cache limitado das distribuições de raid, evitou criar propriedades Primal quando o Pokémon não tem orbe relevante e trocou a busca aninhada de marcadores no inventário. `gradlew.bat --no-daemon --max-workers=1 test remapJar remapVerificationJar` passou com **66 testes, 0 falhas, 0 erros e 0 ignorados**; a etapa web ficou corretamente `UP-TO-DATE`. `git diff --check` passou, com avisos de conversão normal de LF/CRLF nos arquivos editados.
-- `tools/verify_server_jar.py` confirmou o JAR server-only atual: 172 classes, 36 mixins, 696.831 bytes e assets web. SHA-256: `8A551843B3B49B468504BCCC7A89BF44CE11A4BC5B5914FA07159C1FDD88FCAF`. O artefato inclui SGui 1.6.1+1.21.1 como biblioteca aninhada e o texto LGPL-3.0 correspondente; o fixture de teste não está no JAR de produção.
+- Na build usada pelo smoke local dessa revisão, `tools/verify_server_jar.py` confirmou 172 classes, 36 mixins, 696.831 bytes e assets web. SHA-256: `8A551843B3B49B468504BCCC7A89BF44CE11A4BC5B5914FA07159C1FDD88FCAF`. O artefato inclui SGui 1.6.1+1.21.1 como biblioteca aninhada e o texto LGPL-3.0 correspondente; o fixture de teste não está no JAR de produção. A build candidata 0.7.0 mais recente está descrita acima.
 - O smoke usou o Cobbleverse 1.7.42 fixado, Cobblemon 1.7.3 e CobbleDollars 2.0.0 Beta 5.1. O servidor dedicado isolado carregou o JAR atual em `build/pack-smoke-gts-runtime/server`, mundo `smoke-world`, porta `25592`; o painel abriu em `127.0.0.1:18770`. Um cliente Fabric com o pack completo, sem o JAR do gerenciador, conectou como `MarketSmoke`.
 - O fixture conectado chamou a GUI `/mercado` no jogador real. CobbleDollars foi detectado. O fluxo de Pokémon criou anúncio a partir do PC, preservou IVs/EVs, cancelou e retirou o mesmo Pokémon; o fluxo de item anunciou três diamantes, cancelou e confirmou a devolução exata de três itens sem marcador de custódia restante. O resultado está em `build/pack-smoke-gts-runtime/server/connected-market-result.json`.
 - As rotas autenticadas de configurações, anúncios e transações do painel responderam corretamente; a simulação do mesmo smoke confirmou filtro de gerações, XP por jogador/grupo e cap global. O servidor temporário terminou e as portas `25592` e `18770` foram liberadas; os listeners preexistentes foram preservados.
@@ -149,16 +156,16 @@ Esse teste não validou host dedicado via SSH, carga real, migração de progres
 
 | Área | Estado | Observação |
 | --- | --- | --- |
-| Compilação e empacotamento 0.6.0 | Build `43489280795` concluído | Testes automatizados, JAR remapeado e auditoria server-only; o JAR publicado também foi baixado e verificado |
-| Metadados server-only | Verificados no JAR 0.6.0 | 150 classes, 35 mixins e assets web; sem classes cliente |
+| Compilação e empacotamento 0.7.0 | Build `43641701925` concluído | Testes automatizados, JAR remapeado e auditoria server-only; assets web presentes |
+| Metadados server-only | Verificados no JAR 0.7.0 | 184 classes, 37 mixins e assets web; sem classes client-only |
 | Login, dashboard e reinício | Smoke local 0.6.0 observado | Login admin, players, reinício disponível via supervisor; sem campos de monitoramento de servidor |
-| Pokémon selvagens | Smoke API local 2026-11-14 | Leitura/gravação de danos e agressividade, persistência, viewer 403 e revisão vencida 409; sem jogador em combate |
+| Pokémon selvagens | Smoke API local do candidato 0.7.0 | Leitura/gravação de danos e agressividade, persistência, viewer 403 e revisão vencida 409; sem jogador em combate |
 | Aparições e recompensas | Smoke local 0.6.0 observado | API RCT e CobbleDollars; mudança de spawn aplicada e restaurada |
 | Dificuldade por grupos | Smoke local 0.6.0 observado | Catálogo de 1.559 treinadores/10 categorias, dois grupos, perfil combinado persistido; viewer GET 200 e PUT 403 |
 | PC e progressão individual | Build local concluído | Consultas/edições compilam; requer jogador conectado para validar dados reais ao vivo |
 | Batalhas PvE/PvP acima do cap | Build local concluído | Hooks compilam; falta batalha real para verificar bloqueio, troca de Pokémon e isenção PvP |
 | Gerações, ginásios, XP, níveis e captura | Smoke `42505819843` observado | Ver os resultados históricos do pack no Build 0.5.0 abaixo |
-| GTS: GUI, anúncios e retiradas | Smoke local 0.6.0 conectado | Pokémon com IV/EV e item anunciados/cancelados/retirados; compra fixa, débito CobbleDollars, lances, reembolso, entrega do leilão e pagamento pendente do vendedor exercitados |
+| GTS: GUI, anúncios e retiradas | Smoke local do candidato 0.7.0 conectado | Pokémon com IV/EV e item anunciados/cancelados/retirados; compra fixa, débito CobbleDollars, lances, reembolso, entrega do leilão e pagamento pendente do vendedor exercitados |
 | Cliente do pack sem o addon | Smoke `42505819843` conectado em Linux | [Execução do smoke histórico](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42505819843) |
 | Acesso privado e desempenho sob carga | Pendente | Requer host dedicado, jogadores e benchmark A/B representativos |
 | Tailscale Serve ou túnel SSH no host de destino | Pendente | Requer host acessível pela rede privada |
