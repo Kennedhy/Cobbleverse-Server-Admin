@@ -109,22 +109,29 @@ public final class PcManagement {
 
         PCPosition position = new PCPosition(validated.box(), validated.position());
         Pokemon current = store.get(position);
+        if (RescueService.pending(current))
+            throw new Busy("Este Pokémon aguarda a confirmação do resgate. Conclua o resgate antes de editar ou excluir.");
         switch (validated.action()) {
             case "add" -> {
                 if (current != null) throw new Conflict("Esse espaço já foi ocupado. Atualize o PC antes de tentar novamente.");
                 Pokemon created = createPokemon(validated);
                 created.setOriginalTrainer(validated.player());
+                LegendaryLimitManager.requirePcEditAllowed(null, created);
                 store.set(position, created);
+                LegendaryLimitManager.recordPcPokemon(created, validated.player());
             }
             case "edit" -> {
                 verifyExpected(current, validated.expectedPokemonUuid());
                 Pokemon replacement = current.clone(false, server.getRegistryManager());
                 applyProperties(replacement, validated);
+                LegendaryLimitManager.requirePcEditAllowed(current, replacement);
                 store.set(position, replacement);
+                LegendaryLimitManager.recordPcPokemon(replacement, validated.player());
             }
             case "delete" -> {
                 verifyExpected(current, validated.expectedPokemonUuid());
                 if (!store.remove(position)) throw new Conflict("O Pokémon não está mais nesse espaço. Atualize o PC e tente novamente.");
+                LegendaryLimitManager.forgetPcPokemon(current, validated.player());
             }
             default -> throw new IllegalArgumentException("Ação de PC desconhecida.");
         }

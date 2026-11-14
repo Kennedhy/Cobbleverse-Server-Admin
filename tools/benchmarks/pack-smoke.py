@@ -28,8 +28,11 @@ PACK_SHA512 = (
     "78b77304f70fe77e9ef2ee01e487d652f3341279bcc1850ff2587ae8aa8a4"
 )
 FABRIC = "https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.18.4/1.1.0/server/jar"
-GAME_ADDRESS = "127.0.0.1:25585"
-PANEL_PORT = 8765
+GAME_PORT = int(os.environ.get("COBBLEVERSE_SMOKE_GAME_PORT", "25585"))
+PANEL_PORT = int(os.environ.get("COBBLEVERSE_SMOKE_PANEL_PORT", "8765"))
+if not 1024 <= GAME_PORT <= 65535 or not 1024 <= PANEL_PORT <= 65535 or GAME_PORT == PANEL_PORT:
+    raise ValueError("Smoke server ports must be distinct values from 1024 to 65535")
+GAME_ADDRESS = f"127.0.0.1:{GAME_PORT}"
 PANEL_ADDRESS = f"http://127.0.0.1:{PANEL_PORT}"
 PLAYER = "CobbleSmoke"
 SIMULATION_PLAYER_UUID = "3d0bbb38-80e3-3a3d-9a13-84995b87f05a"
@@ -39,6 +42,10 @@ def download(url, target, sha512=None):
     if not url.startswith("https://"):
         raise ValueError(f"Non-HTTPS download: {url}")
     target.parent.mkdir(parents=True, exist_ok=True)
+    if sha512 and target.is_file():
+        with target.open("rb") as existing:
+            if hashlib.file_digest(existing, "sha512").hexdigest() == sha512:
+                return
     temp = target.with_suffix(target.suffix + ".part")
     for attempt in range(3):
         try:
@@ -57,8 +64,9 @@ def download(url, target, sha512=None):
 
 
 def safe_path(root, relative):
-    target = (root / relative).resolve()
-    if not target.is_relative_to(root):
+    base = root.resolve()
+    target = (base / relative).resolve()
+    if not target.is_relative_to(base):
         raise ValueError(f"Unsafe pack path: {relative}")
     return target
 
@@ -116,7 +124,7 @@ def install_pack(root, server, client):
     )
 
 
-def panel_smoke(server):
+def panel_smoke(server, version):
     token = (server / "smoke-world/generation-control/web-access.token").read_text().strip()
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     login = urllib.request.Request(
@@ -131,9 +139,11 @@ def panel_smoke(server):
         try:
             with opener.open(PANEL_ADDRESS + "/api/state", timeout=8) as response:
                 state = json.load(response)
-                if state["world"] != "smoke-world":
-                    raise RuntimeError("Panel reported a different world")
+                if not isinstance(state.get("active"), dict) or not isinstance(state.get("editRevision"), int):
+                    raise RuntimeError("Panel state is missing the active configuration or edit revision")
             print("Authenticated panel state passed.")
+            if version >= (0, 6, 0):
+                market_api_smoke(opener)
             return opener
         except urllib.error.HTTPError as failure:
             # RCT can register its trainers after the web listener opens.
@@ -141,6 +151,26 @@ def panel_smoke(server):
                 raise
             failure.close()
             time.sleep(2)
+
+
+def market_api_smoke(opener):
+    responses = {}
+    for name, path in (
+        ("settings", "/api/market/settings"),
+        ("listings", "/api/market/listings?status=active"),
+        ("transactions", "/api/market/transactions?pendingCursor=0"),
+    ):
+        with opener.open(PANEL_ADDRESS + path, timeout=8) as response:
+            if response.status != 200:
+                raise RuntimeError(f"Market endpoint {path} returned HTTP {response.status}")
+            responses[name] = json.load(response)
+    if "maxGlobalListings" not in responses["settings"]:
+        raise RuntimeError("Market settings response is missing its limits")
+    if not isinstance(responses["listings"].get("listings"), list):
+        raise RuntimeError("Market listings response has an invalid shape")
+    if not isinstance(responses["transactions"].get("pendingOperations"), list):
+        raise RuntimeError("Market transactions response has an invalid shape")
+    print("Authenticated GTS settings, listings, and transaction APIs passed.")
 
 
 def wait_for(process, log, marker, seconds):
@@ -173,7 +203,7 @@ def finish(process, stop=False):
             process.wait()
 
 
-def start_server(server, output, memory="3G", verification=None):
+def start_server(server, output, memory="2G", verification=None):
     args = ["java", f"-Xmx{memory}", "-XX:ActiveProcessorCount=2"]
     if verification:
         args.append(f"-Dgenerationcontrol.verification={verification}")
@@ -207,8 +237,18 @@ def client_command(installed, client, username, memory="4G", player_uuid=None):
 
 
 def api(opener, path, **params):
-    with opener.open(PANEL_ADDRESS + "/api/pc/" + path + "?" + urllib.parse.urlencode(params), timeout=10) as response:
-        return json.load(response)
+    url = PANEL_ADDRESS + "/api/pc/" + path + "?" + urllib.parse.urlencode(params)
+    for attempt in range(3):
+        try:
+            with opener.open(url, timeout=10) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as failure:
+            detail = failure.read().decode("utf-8", errors="replace")
+            failure.close()
+            if failure.code != 503 or attempt == 2:
+                raise RuntimeError(f"PC API {path} returned HTTP {failure.code}: {detail}") from failure
+            print(f"PC API {path} is temporarily unavailable; retrying ({attempt + 1}/2).")
+            time.sleep(attempt + 1)
 
 
 def panel_request(opener, path, payload=None):
@@ -431,13 +471,13 @@ def live_settings_smoke(opener):
     print("XP, level caps, and capture applied live; discarding restored active gameplay settings.")
 
 
-def saved_pc_smoke(root, server, player_id):
+def saved_pc_smoke(root, server, player_id, version):
     server_log = root / "server-offline-pc.log"
     with server_log.open("wb") as output:
         dedicated = start_server(server, output)
         try:
             wait_for(dedicated, server_log, "Painel web local:", 300)
-            opener = panel_smoke(server)
+            opener = panel_smoke(server, version)
             matches = api(opener, "players", q=player_id)["players"]
             if not any(entry["uuid"] == player_id and not entry["online"] for entry in matches):
                 raise RuntimeError("The saved player was not discoverable offline")
@@ -510,6 +550,9 @@ def connected_verification_smoke(root, server, client, installed, mode, username
             if not result.get("success"):
                 raise RuntimeError(f"Connected {mode} verification failed: {result}")
             print(f"Connected {mode} verification passed: {result}")
+            if mode == "market":
+                # Let a local operator inspect the player GUI before the disposable client exits.
+                time.sleep(12)
         finally:
             for player in clients:
                 finish(player)
@@ -573,9 +616,19 @@ def runtime_policy_smoke(root, server):
 
 def run(root):
     server, client = root / "server", root / "client"
-    server.mkdir()
-    client.mkdir()
-    install_pack(root, server, client)
+    server.mkdir(exist_ok=True)
+    client.mkdir(exist_ok=True)
+    prepared_server_mods = server / "mods-unfiltered"
+    if prepared_server_mods.is_dir():
+        archive = root / "cobbleverse.mrpack"
+        with archive.open("rb") as pack:
+            if hashlib.file_digest(pack, "sha512").hexdigest() != PACK_SHA512:
+                raise RuntimeError("Existing prepared pack does not match the pinned Modrinth archive")
+        if not (server / "mods").is_dir() or not (client / "mods").is_dir():
+            raise RuntimeError("Existing prepared pack installation is incomplete")
+        print("Reusing the previously verified pinned pack installation.")
+    else:
+        install_pack(root, server, client)
     (manager,) = (root / "release").glob("*.jar")
     with zipfile.ZipFile(manager) as mod:
         version = tuple(map(int, json.loads(mod.read("fabric.mod.json"))["version"].split(".")))
@@ -591,7 +644,7 @@ def run(root):
     # Only this disposable world binds to loopback and accepts the offline fixture account.
     (server / "eula.txt").write_text("eula=true\n")
     (server / "server.properties").write_text(
-        "server-ip=127.0.0.1\nserver-port=25585\nonline-mode=false\n"
+        f"server-ip=127.0.0.1\nserver-port={GAME_PORT}\nonline-mode=false\n"
         "level-name=smoke-world\nlevel-seed=42\nview-distance=3\nsimulation-distance=3\n"
         "spawn-protection=0\n"
     )
@@ -614,7 +667,7 @@ def run(root):
     loader = mod_loader.get_mod_loader("fabric")
     installed = loader.install("1.21.1", client, loader_version="0.18.4")
     args = client_command(
-        installed, client, PLAYER, memory="4G", player_uuid="3d0bbb3880e33a3d9a1384995b87f05a"
+        installed, client, PLAYER, memory="3G", player_uuid="3d0bbb3880e33a3d9a1384995b87f05a"
     )
     server_log = root / "server.log"
     checked_pc = None
@@ -622,7 +675,7 @@ def run(root):
         dedicated = start_server(server, output)
         try:
             wait_for(dedicated, server_log, "Painel web local:", 300)
-            opener = panel_smoke(server)
+            opener = panel_smoke(server, version)
             if version >= (0, 4, 8):
                 policy_simulation_smoke(opener)
             with (root / "client.log").open("wb") as output:
@@ -641,12 +694,13 @@ def run(root):
         finally:
             finish(dedicated, stop=True)
     if checked_pc:
-        saved_pc_smoke(root, server, checked_pc)
+        saved_pc_smoke(root, server, checked_pc, version)
         fixtures = sorted((root / "fixtures").glob("*.jar"))
         if fixtures:
             runtime_policy_smoke(root, server)
             connected_verification_smoke(root, server, client, installed, "capture", ["NetAdmin"])
             connected_verification_smoke(root, server, client, installed, "wild-levels", ["NetAdmin", "NetGuest"])
+            connected_verification_smoke(root, server, client, installed, "market", ["MarketSmoke"])
         else:
             print("Skipped connected runtime checks: this release does not include the disposable verification fixture.")
 

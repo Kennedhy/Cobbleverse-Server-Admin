@@ -3,6 +3,7 @@ package br.com.cobbleverse.generations.integration;
 import br.com.cobbleverse.generations.GenerationControl;
 import br.com.cobbleverse.generations.rules.CaptureRules;
 import br.com.cobbleverse.generations.rules.GameplaySettings;
+import br.com.cobbleverse.generations.rules.LegendaryCatalog;
 import com.cobblemon.mod.common.Cobblemon;
 import com.cobblemon.mod.common.api.pokedex.CaughtCount;
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
@@ -13,18 +14,33 @@ import net.minecraft.server.network.ServerPlayerEntity;
 public final class CaptureManager {
     private static GameplaySettings cachedSettings;
     private static double multiplier=1;
+    private static double legendaryMultiplier=1;
     private CaptureManager() {}
-    public static void clear() { cachedSettings=null; multiplier=1; }
+    public static void clear() { cachedSettings=null; multiplier=1; legendaryMultiplier=1; }
     public static void notifyBlockedCapture(LivingEntity thrower, PokemonEntity target) {
         if (thrower instanceof ServerPlayerEntity player && !CobblemonIntegration.allowed(target.getPokemon()))
             player.sendMessage(CobblemonIntegration.blockMessage());
     }
 
-    public static int threshold(int original,LivingEntity thrower,float modifiedCatchRate,boolean critical) {
+    public static boolean blockedByLegendaryLimit(LivingEntity thrower, PokemonEntity target) {
+        String reason = LegendaryLimitManager.captureBlockReason(target.getPokemon());
+        if (reason == null) return false;
+        if (thrower instanceof ServerPlayerEntity player) player.sendMessage(net.minecraft.text.Text.literal(reason));
+        return true;
+    }
+
+    public static int threshold(int original,LivingEntity thrower,PokemonEntity target,float modifiedCatchRate,boolean critical) {
         if(!GenerationControl.ready()) return original;
         GameplaySettings settings=GenerationControl.gameplaySettings();
-        if(settings!=cachedSettings) { cachedSettings=settings; multiplier=settings==null ? 1 : settings.captureMultiplier(); }
-        if(multiplier==1) return original;
+        if(settings!=cachedSettings) {
+            cachedSettings=settings;
+            multiplier=settings==null ? 1 : settings.captureMultiplier();
+            legendaryMultiplier=settings==null ? 1 : settings.legendaryCaptureMultiplier();
+        }
+        double effectiveMultiplier=multiplier;
+        if (legendaryMultiplier != 1 && LegendaryCatalog.keyForPokemon(target.getPokemon().getSpecies().getResourceIdentifier().toString(),
+                target.getPokemon().getForm().getName()) != null) effectiveMultiplier*=legendaryMultiplier;
+        if(effectiveMultiplier==1) return original;
         double criticalChance=0;
         if(thrower instanceof ServerPlayerEntity player) {
             int caught=((Number)Cobblemon.INSTANCE.getPlayerDataManager().getPokedexData(player).getGlobalCalculatedValue(CaughtCount.INSTANCE)).intValue();
@@ -32,6 +48,6 @@ public final class CaptureManager {
             int threshold=kotlin.math.MathKt.roundToInt(modifiedCatchRate*factor/6.0f);
             criticalChance=Math.max(0,Math.min(256,threshold))/256.0;
         }
-        return CaptureRules.threshold(original,critical,criticalChance,multiplier);
+        return CaptureRules.threshold(original,critical,criticalChance,effectiveMultiplier);
     }
 }

@@ -97,6 +97,43 @@ public final class GenerationPolicyVerification {
             result.put("trainerTeamsAdapted", teamReport.adaptedTeams);
             if (teamReport.trainerTeams == 0) failures.add("Nenhuma equipe RCT foi encontrada para prévia.");
             failures.addAll(teamReport.errors);
+
+            if (net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("cobblemonraiddens")) {
+                var raidIds = com.necro.raid.dens.common.registry.RaidRegistry.RAID_LIST;
+                Integer legalIndex = null;
+                Integer forbiddenIndex = null;
+                int legal = 0;
+                int forbidden = 0;
+                for (int index = 0; index < raidIds.size(); index++) {
+                    var boss = com.necro.raid.dens.common.registry.RaidRegistry.getRaidBoss(raidIds.get(index));
+                    if (br.com.cobbleverse.generations.integration.RaidGuard.allowed(boss)) {
+                        legal++;
+                        if (legalIndex == null && boss.getWeight() > 0) legalIndex = index;
+                    } else {
+                        forbidden++;
+                        if (forbiddenIndex == null) forbiddenIndex = index;
+                        if (boss.getWeight() != 0.0) failures.add("Raid proibida com peso positivo: " + raidIds.get(index));
+                    }
+                }
+                result.put("raidBossesInspected", raidIds.size());
+                result.put("allowedRaidBosses", legal);
+                result.put("forbiddenRaidBosses", forbidden);
+                if (legal == 0) failures.add("Nenhum chefe de raid permitido foi encontrado.");
+                if (forbiddenIndex != null && com.necro.raid.dens.common.registry.RaidRegistry.roll(
+                        net.minecraft.util.math.random.Random.create(123), new float[]{1}, new int[]{forbiddenIndex}) != null)
+                    failures.add("A rolagem ponderada selecionou um chefe proibido.");
+                if (legalIndex != null) {
+                    var legalId = raidIds.get(legalIndex);
+                    for (int attempt = 0; attempt < 2; attempt++) {
+                        if (!legalId.equals(com.necro.raid.dens.common.registry.RaidRegistry.roll(
+                                net.minecraft.util.math.random.Random.create(123), new float[]{1}, new int[]{legalIndex})))
+                            failures.add("A tabela em cache não selecionou o chefe permitido esperado.");
+                    }
+                    if (com.necro.raid.dens.common.registry.RaidRegistry.roll(
+                            net.minecraft.util.math.random.Random.create(123), new float[]{0}, new int[]{legalIndex}) != null)
+                        failures.add("Uma raid de peso zero foi selecionada.");
+                }
+            }
         } catch (Throwable failure) {
             failures.add("Verificação interrompida: " + failure.getClass().getSimpleName() + ": " + failure.getMessage());
             failure.printStackTrace();

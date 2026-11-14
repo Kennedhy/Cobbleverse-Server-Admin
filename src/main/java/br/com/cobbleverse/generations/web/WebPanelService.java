@@ -12,7 +12,6 @@ import br.com.cobbleverse.generations.rules.ExperienceRules;
 import br.com.cobbleverse.generations.rules.GenerationRules;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.util.WorldSavePath;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -30,7 +29,6 @@ final class WebPanelService {
         String status = "running";
         String message = "Validação em andamento.";
         long revision;
-        long startedAt = System.currentTimeMillis();
         String fingerprint;
         GenerationConfig candidate;
         ValidationReport report;
@@ -78,7 +76,6 @@ final class WebPanelService {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("name", player.getGameProfile().getName());
             entry.put("uuid", player.getUuidAsString());
-            entry.put("online", true);
             int cap = gameplay == null ? 0 : ExperienceManager.battleCap(gameplay, player);
             entry.put("levelCap", cap > 0 ? cap : null);
             entry.put("partySize", PcInspection.loadedPartySize(player.getUuid()));
@@ -101,7 +98,8 @@ final class WebPanelService {
                     Map.entry("wildLevelBehavior", gameplay.wildLevelBehavior()),
                     Map.entry("blockOverCapPokemonInBattles", gameplay.blockOverCapPokemonInBattles()),
                     Map.entry("overCapBattleBehavior", gameplay.overCapBattleBehavior()),
-                    Map.entry("captureMultiplier", gameplay.captureMultiplier())));
+                    Map.entry("captureMultiplier", gameplay.captureMultiplier()),
+                    Map.entry("legendaryCaptureMultiplier", gameplay.legendaryCaptureMultiplier())));
         }
         return dashboard;
     }
@@ -122,25 +120,19 @@ final class WebPanelService {
         var active = store.active();
         var pending = store.pending();
         LinkedHashMap<String, Object> state = new LinkedHashMap<>();
-        var worldRoot = server.getSavePath(WorldSavePath.ROOT).toAbsolutePath().normalize();
-        var worldName = worldRoot.getFileName();
-        state.put("world", worldName == null ? worldRoot.toString() : worldName.toString());
         state.put("accessRole", accessRole);
         state.put("accessActor", accessActor);
         state.put("active", active);
         state.put("pending", pending);
         var runtimeGameplay = GenerationControl.gameplaySettings();
-        state.put("liveGameplaySettings", runtimeGameplay == null ? Map.of() : runtimeGameplay.view());
         state.put("liveGameplayRevision", GenerationControl.gameplaySettingsRevision());
         state.put("pendingGameplaySettingsDiffer", pending != null && runtimeGameplay != null && !runtimeGameplay.matches(pending));
         state.put("editRevision", store.editRevision());
         state.put("startupWarning", store.startupWarning());
         state.put("hasPrevious", java.nio.file.Files.isRegularFile(store.directory().resolve("previous.json")));
-        List<PlayerEntry> online = new ArrayList<>();
         Map<String, PlayerEntry> known = new TreeMap<>();
         for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
             PlayerEntry entry = new PlayerEntry(player.getGameProfile().getName(), player.getUuidAsString(), true);
-            online.add(entry);
             known.put(entry.uuid(), entry);
         }
         for (String id : active.playerXpMultipliers.keySet()) known.putIfAbsent(id, new PlayerEntry(id, id, false));
@@ -149,7 +141,6 @@ final class WebPanelService {
             for (String id : pending.playerXpMultipliers.keySet()) known.putIfAbsent(id, new PlayerEntry(id, id, false));
             for (String id : pending.playerXpGroups.keySet()) known.putIfAbsent(id, new PlayerEntry(id, id, false));
         }
-        state.put("onlinePlayers", online);
         state.put("knownPlayers", known.values());
         Job job = jobs.get(sessionId);
         state.put("job", job == null ? null : jobView(job));
@@ -158,8 +149,6 @@ final class WebPanelService {
             tickets.remove(sessionId);
             ticket = null;
         }
-        state.put("validatedFingerprint", ticket == null ? null : ticket.fingerprint());
-        state.put("validatedRevision", ticket == null ? null : ticket.revision());
         return state;
     }
 
@@ -213,19 +202,13 @@ final class WebPanelService {
             }
         }
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
-        result.put("species", key);
-        result.put("form", form);
         result.put("generation", GenerationRules.generation(species.getNationalPokedexNumber()));
         result.put("allowed", allowed);
         result.put("reason", rules.explain(key, species.getNationalPokedexNumber(), form, aspects));
         result.put("xpManaged", candidate.manageExperience);
         result.put("xpSource", multiplier.source());
         result.put("xpGroup", multiplier.group());
-        result.put("globalMultiplier", multiplier.global());
-        result.put("specificMultiplier", multiplier.player());
         result.put("totalMultiplier", multiplier.total());
-        result.put("baseXp", request.baseXp());
-        result.put("remainingXp", request.remainingXp());
         result.put("awardedXp", awarded);
         result.put("levelCap", cap);
         result.put("levelCapSource", capSource);
@@ -253,7 +236,7 @@ final class WebPanelService {
         if (expectedRevision != store.editRevision())
             throw new Problem(409, "A configuração mudou em outra sessão. Atualize o painel antes de aplicar ao vivo.");
         if (store.pending() == null)
-            throw new Problem(409, "Salve uma revisão pendente antes de aplicar XP, limites, captura ou shiny ao vivo.");
+            throw new Problem(409, "Salve uma revisão pendente antes de aplicar XP, níveis, captura, shiny ou limites lendários ao vivo.");
         try { GenerationControl.applyPendingGameplaySettings(expectedRevision); }
         catch (IllegalStateException conflict) { throw new Problem(409, message(conflict)); }
         return snapshot(sessionId, accessRole, accessActor);
@@ -328,7 +311,6 @@ final class WebPanelService {
 
         job.action = "save";
         job.status = "running";
-        job.startedAt = System.currentTimeMillis();
         job.message = "Salvando a revisão em segundo plano…";
         tickets.remove(sessionId);
         try {
@@ -374,7 +356,6 @@ final class WebPanelService {
         job.action = request.action();
         job.revision = request.expectedRevision();
         job.status = "running";
-        job.startedAt = System.currentTimeMillis();
         job.message = request.action().equals("discard") ? "Descartando a revisão pendente…" : "Preparando a revisão em segundo plano…";
         jobs.put(sessionId, job);
         tickets.remove(sessionId);
@@ -442,13 +423,21 @@ final class WebPanelService {
         view.put("status", job.status);
         view.put("message", job.message);
         view.put("revision", job.revision);
-        view.put("startedAt", job.startedAt);
         view.put("fingerprint", job.fingerprint);
         view.put("candidate", job.candidate);
-        view.put("report", job.report);
+        view.put("report", validationReportView(job.report));
         view.put("state", job.resultState);
-        view.put("progress", job.status.equals("running") && job.action.equals("validate")
-                ? ValidationService.progress(server) : null);
+        return view;
+    }
+
+    private static Map<String, Object> validationReportView(ValidationReport report) {
+        if (report == null) return null;
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("errors", report.errors);
+        view.put("warnings", report.warnings);
+        view.put("integrations", report.integrations);
+        view.put("playerImpactStale", report.playerImpactStale);
+        view.put("playerImpactMessage", report.playerImpactMessage);
         return view;
     }
 

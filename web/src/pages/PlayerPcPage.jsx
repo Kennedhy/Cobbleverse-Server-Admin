@@ -260,7 +260,7 @@ export default function PlayerPcPage({ canEdit = false, initialPlayer = null }) 
     const controller = new AbortController();
     const params = new URLSearchParams({ q: search.value });
     if (cursor) params.set('cursor', cursor);
-    request('/api/pc/players?' + params, { signal: controller.signal }).then((result) => {
+    request('/api/pc/players?' + params, { signal: controller.signal, retryBusy: true }).then((result) => {
       if (!controller.signal.aborted) setDirectory(result);
     }).catch((error) => {
       if (!controller.signal.aborted) setDirectoryError(error.message);
@@ -274,7 +274,7 @@ export default function PlayerPcPage({ canEdit = false, initialPlayer = null }) 
     if (!selection || !directoryReady) return;
     const controller = new AbortController();
     const params = new URLSearchParams({ player: selection.player.uuid, box: String(selection.index) });
-    request('/api/pc/box?' + params, { signal: controller.signal }).then((result) => {
+    request('/api/pc/box?' + params, { signal: controller.signal, retryBusy: true }).then((result) => {
       if (!controller.signal.aborted) setBox(result);
     }).catch((error) => {
       if (!controller.signal.aborted) setBoxError(error.message);

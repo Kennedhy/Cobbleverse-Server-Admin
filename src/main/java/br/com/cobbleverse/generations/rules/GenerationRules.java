@@ -86,6 +86,8 @@ public final class GenerationRules {
     }
 
     public boolean regionAllowed(String region) { return config.regions.contains(region); }
+    public String initialRegion() { return config.initialRegion; }
+    public boolean rescueStarter() { return config.rescueStarter; }
     public List<Integer> enabledGenerations() { return List.copyOf(config.generations); }
     public boolean hasGyms() { return !config.regions.isEmpty(); }
     public boolean restrictExisting() { return config.restrictExistingPokemon; }

@@ -4,6 +4,21 @@ Notable changes for each release are recorded here. Versions follow `MAJOR.MINOR
 
 ## [Unreleased]
 
+- Add an additional legendary capture multiplier and editable per-species/form caps shared by the entire world; count player parties, offline PCs, and Pokémon held in GTS escrow.
+- Build the legendary population index once per world startup in bounded batches, then keep it current from Cobblemon gain, release, evolution, capture, PC-admin, and GTS events without recurring PC scans.
+- Add a searchable generation-grouped legendary table to the web panel with current world counts, live-editable caps, and explicit unlimited values.
+- Add a server-side GTS and auction house with a player inventory GUI, CobbleDollars pricing, Pokémon/held-item escrow, bids, refunds, and claimable deliveries.
+- Add market administration in the private web panel for listings, completed sales, pending/recovering operations, moderation, and market limits.
+- Persist market escrow and transaction journals in the world data directory, recover interrupted operations on login, and close expired listings from a single deadline check rather than periodic listing scans.
+- Confirm Pokémon deposits and deliveries against Cobblemon's persisted NBT or JSON store files before completing escrow; keep them pending when disk state cannot be verified. Confirm item deposits and deliveries with persisted inventory markers, and verify online CobbleDollars balances in both the account JSON and playerdata NBT. Reject container items that still hold other items.
+- Reconcile interrupted purchases and bids from matching persisted CobbleDollars account/playerdata balances on a single bounded worker, even while the buyer is offline; rotate checks so earlier ambiguous transactions cannot starve later ones. Keep ambiguous debits and item claims pending rather than risk a duplicate settlement or delivery.
+- Keep panel GET routes read-only for listing expiry, expose completed settlement and pending-operation context in the market ledger, and show listing status and cancellation restrictions in the player GUI.
+- Avoid JSON round-tripping the entire market journal for rollback, and tighten player listing pagination and stale-result handling in the web panel.
+- Bundle SGui as a server-only dependency so players do not need to install this addon or an extra client mod.
+- Index RCT player/trainer groups and difficulty profiles on configuration changes, cache filtered raid weight tables, avoid unnecessary Primal property allocations during battles, and use direct transaction lookup when cleaning player inventory markers.
+- Retry transient busy responses a bounded number of times for read-only player PC queries, with cancellation when the user changes the selected player or page.
+- Add a private-panel page for Fight or Flight wild aggression thresholds, attack levels, darkness behavior, optional ranged attacks, and direct melee/ranged damage to players; preserve untouched config values and require a server restart to apply edits.
+
 ## [0.6.0] — 2026-11-13 — Preview
 
 - Allow administrators to add, edit, and delete Pokémon in player PCs from the web panel, including nickname, species/form, level, shiny, nature, ability, moves, IVs, and EVs.

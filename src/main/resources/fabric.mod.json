@@ -3,7 +3,7 @@
   "id": "generation_control",
   "version": "${version}",
   "name": "Gerenciador COBBLEVERSE",
-  "description": "Gerenciador server-only de gerações, ginásios, XP, níveis, captura e painel web para COBBLEVERSE.",
+  "description": "Gerenciador server-only de Pokémon, GTS, regras e painel web para servidores COBBLEVERSE.",
   "authors": ["Kennedhy"],
   "license": "MIT",
   "environment": "server",

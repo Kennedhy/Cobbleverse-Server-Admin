@@ -8,10 +8,12 @@ public final class ConnectedVerificationEntrypoint implements ModInitializer {
     public void onInitialize() {
         switch (System.getProperty("generationcontrol.verification", "")) {
             case "capture" -> new ConnectedCaptureVerification().onInitialize();
+            case "market" -> new ConnectedMarketVerification().onInitialize();
             case "wild-levels" -> new ConnectedWildLevelsVerification().onInitialize();
             case "runtime-policy" -> new RuntimePolicyVerificationEntrypoint().onInitialize();
+            case "rescue" -> new RescueVerificationEntrypoint().onInitialize();
             default -> throw new IllegalStateException(
-                    "Set -Dgenerationcontrol.verification to capture, wild-levels, or runtime-policy for this smoke fixture"
+                    "Set -Dgenerationcontrol.verification to capture, market, wild-levels, runtime-policy, or rescue for this smoke fixture"
             );
         }
     }

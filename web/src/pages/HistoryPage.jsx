@@ -8,6 +8,7 @@ const labels = {
   manageGyms: 'Gerenciar ginásios', manageExperience: 'Gerenciar XP e níveis', globalXpMultiplier: 'Multiplicador global de XP',
   globalLevelCap: 'Limite global de nível', levelCapMode: 'Origem do limite de nível', wildLevelBehavior: 'Comportamento do nível selvagem',
   blockOverCapPokemonInBattles: 'Bloquear batalhas acima do limite', overCapBattleBehavior: 'Regra acima do cap em PvE', captureMultiplier: 'Multiplicador de captura',
+  legendaryCaptureMultiplier: 'Multiplicador de captura lendária', legendaryLimits: 'Limites globais de lendários',
   regions: 'Regiões permitidas', initialRegion: 'Região inicial', excludedSpecies: 'Espécies excluídas', includedSpecies: 'Exceções permitidas',
   playerXpGroups: 'Grupos de XP por jogador', groupXpMultipliers: 'Multiplicadores dos grupos', playerXpMultipliers: 'Multiplicadores individuais',
   automaticRegions: 'Regiões automáticas', regionalForms: 'Formas regionais', megaEvolutions: 'Megaevoluções',

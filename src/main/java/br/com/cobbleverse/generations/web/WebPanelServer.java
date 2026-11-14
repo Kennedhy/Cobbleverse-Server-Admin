@@ -6,6 +6,7 @@ import br.com.cobbleverse.generations.data.PolicyResources;
 import br.com.cobbleverse.generations.integration.PcInspection;
 import br.com.cobbleverse.generations.integration.PcManagement;
 import br.com.cobbleverse.generations.integration.TrainerDifficultyManager;
+import br.com.cobbleverse.generations.web.market.MarketService;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
@@ -518,6 +519,10 @@ public final class WebPanelServer {
             json(exchange, 200, dashboard);
             return;
         }
+        if (path.equals("/api/legendary-limits") && method.equals("GET")) {
+            json(exchange, 200, onServer(br.com.cobbleverse.generations.integration.LegendaryLimitManager::view));
+            return;
+        }
         if (path.equals("/api/trainer-operations")) {
             if (method.equals("GET")) {
                 json(exchange, 200, onServer(TrainerOperationsSettings::read));
@@ -528,6 +533,30 @@ public final class WebPanelServer {
             throttle(sessionId);
             JsonObject payload = ConfigStore.GSON.fromJson(body(exchange), JsonObject.class);
             json(exchange, 200, onServer(() -> TrainerOperationsSettings.update(payload, true)));
+            return;
+        }
+        if (path.equals("/api/wild-combat")) {
+            if (method.equals("GET")) {
+                try { json(exchange, 200, WildPokemonCombatSettings.read()); }
+                catch (IOException failure) {
+                    throw new WebPanelService.Problem(503, "Não foi possível ler a configuração do Fight or Flight.");
+                }
+                return;
+            }
+            if (!method.equals("PUT")) { methodNotAllowed(exchange, "GET, PUT"); return; }
+            if (!canEdit(sessionId)) throw new WebPanelService.Problem(403, "Esta credencial permite apenas consulta.");
+            throttle(sessionId);
+            JsonObject payload = ConfigStore.GSON.fromJson(body(exchange), JsonObject.class);
+            try {
+                json(exchange, 200, WildPokemonCombatSettings.update(payload));
+            } catch (WildPokemonCombatSettings.StaleConfigurationException stale) {
+                throw new WebPanelService.Problem(409, safeMessage(stale.getMessage()));
+            } catch (IllegalStateException unavailable) {
+                throw new WebPanelService.Problem(503, safeMessage(unavailable.getMessage()));
+            } catch (IOException failure) {
+                GenerationControl.LOGGER.error("Não foi possível salvar a configuração do Fight or Flight.", failure);
+                throw new WebPanelService.Problem(503, "Não foi possível salvar a configuração do Fight or Flight.");
+            }
             return;
         }
         if (path.equals("/api/trainer-difficulty")) {
@@ -544,6 +573,8 @@ public final class WebPanelServer {
             JsonObject payload = ConfigStore.GSON.fromJson(body(exchange), JsonObject.class);
             try {
                 json(exchange, 200, TrainerDifficultyManager.save(payload));
+            } catch (TrainerDifficultyManager.StaleConfigurationException stale) {
+                throw new WebPanelService.Problem(409, stale.getMessage());
             } catch (IOException failure) {
                 throw new WebPanelService.Problem(503, "Não foi possível gravar a configuração de dificuldade dos treinadores.");
             }
@@ -578,6 +609,49 @@ public final class WebPanelServer {
             } finally {
                 PlayerProgressAdmin.close(plan);
             }
+            return;
+        }
+        if (path.equals("/api/market/settings")) {
+            if (method.equals("GET")) {
+                json(exchange, 200, onServer(() -> MarketService.current().settingsView()));
+                return;
+            }
+            if (!method.equals("PUT")) { methodNotAllowed(exchange, "GET, PUT"); return; }
+            if (!canEdit(sessionId)) throw new WebPanelService.Problem(403, "Esta credencial permite apenas consulta.");
+            throttle(sessionId);
+            JsonObject payload = ConfigStore.GSON.fromJson(body(exchange), JsonObject.class);
+            json(exchange, 200, onServer(() -> MarketService.current().updateSettings(payload)));
+            return;
+        }
+        if (path.equals("/api/market/listings") && method.equals("GET")) {
+            var parameters = query(exchange.getRequestURI().getRawQuery());
+            json(exchange, 200, onServer(() -> MarketService.current().listingsPage(
+                    parameters.get("cursor"), parameters.get("q"), parameters.get("type"), parameters.get("status"))));
+            return;
+        }
+        if (path.equals("/api/market/transactions") && method.equals("GET")) {
+            var parameters = query(exchange.getRequestURI().getRawQuery());
+            json(exchange, 200, onServer(() -> MarketService.current().transactionsPage(
+                    parameters.get("cursor"), parameters.get("pendingCursor"))));
+            return;
+        }
+        if (path.startsWith("/api/market/listings/") && path.endsWith("/remove")) {
+            if (!method.equals("POST")) { methodNotAllowed(exchange, "POST"); return; }
+            if (!canEdit(sessionId)) throw new WebPanelService.Problem(403, "Esta credencial permite apenas consulta.");
+            throttle(sessionId);
+            String id = path.substring("/api/market/listings/".length(), path.length() - "/remove".length());
+            JsonObject payload = ConfigStore.GSON.fromJson(body(exchange), JsonObject.class);
+            String reason = payload != null && payload.has("reason") && payload.get("reason").isJsonPrimitive()
+                    ? payload.get("reason").getAsString() : "";
+            try {
+                onServer(() -> {
+                    MarketService.current().removeListing(id, reason, null, auditActor(sessionId));
+                    return null;
+                });
+            } catch (IOException failure) {
+                throw new WebPanelService.Problem(503, "Não foi possível persistir a remoção do anúncio.");
+            }
+            json(exchange, 200, Map.of("removed", true));
             return;
         }
         if (path.equals("/api/server/restart") && method.equals("POST")) {
@@ -687,7 +761,7 @@ public final class WebPanelServer {
         }
         if (path.equals("/api/server/restart")) { methodNotAllowed(exchange, "POST"); return; }
         if (path.equals("/api/session")) { methodNotAllowed(exchange, "GET, POST, DELETE"); return; }
-        if (path.equals("/api/state") || path.equals("/api/dashboard") || path.equals("/api/job") || path.equals("/api/species") || path.equals("/api/action") || path.equals("/api/simulate") || path.equals("/api/history") || path.equals("/api/pc/edit")) {
+        if (path.equals("/api/state") || path.equals("/api/dashboard") || path.equals("/api/legendary-limits") || path.equals("/api/job") || path.equals("/api/species") || path.equals("/api/action") || path.equals("/api/simulate") || path.equals("/api/history") || path.equals("/api/pc/edit") || path.equals("/api/wild-combat") || path.equals("/api/market/listings") || path.equals("/api/market/transactions") || path.equals("/api/market/settings")) {
             methodNotAllowed(exchange, path.equals("/api/action") || path.equals("/api/simulate") || path.equals("/api/pc/edit") ? "POST" : "GET"); return;
         }
         json(exchange, 404, Map.of("message", "Rota não encontrada."));

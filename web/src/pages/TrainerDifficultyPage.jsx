@@ -54,7 +54,7 @@ export default function TrainerDifficultyPage({ canEdit, state }) {
   const [trainerSearch, setTrainerSearch] = useState({});
   const [playerUuid, setPlayerUuid] = useState({});
   const [memberSearch, setMemberSearch] = useState({});
-  const players = state?.knownPlayers || state?.onlinePlayers || [];
+  const players = state?.knownPlayers || [];
   const dirty = Boolean(config) && stable(config) !== baseline;
 
   const load = async () => {

@@ -15,15 +15,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(value=CobblemonCaptureCalculator.class,remap=false)
 public abstract class CaptureCalculatorMixin {
-    @Inject(method="processCapture",at=@At("HEAD"),remap=false)
+    @Inject(method="processCapture",at=@At("HEAD"),cancellable=true,remap=false)
     private void generationControl$notifyBlockedCapture(LivingEntity thrower,EmptyPokeBallEntity ball,PokemonEntity target,
             CallbackInfoReturnable<CaptureContext> cir) {
         CaptureManager.notifyBlockedCapture(thrower,target);
+        if (CaptureManager.blockedByLegendaryLimit(thrower,target))
+            cir.setReturnValue(new CaptureContext(0,false,false));
     }
 
     @ModifyExpressionValue(method="processCapture",at=@At(value="INVOKE",target="Lkotlin/math/MathKt;roundToInt(F)I"),remap=false)
     private int generationControl$captureChance(int original,LivingEntity thrower,EmptyPokeBallEntity ball,PokemonEntity target,
             @Local(index=13) float modifiedCatchRate,@Local(index=14) boolean critical) {
-        return CaptureManager.threshold(original,thrower,modifiedCatchRate,critical);
+        return CaptureManager.threshold(original,thrower,target,modifiedCatchRate,critical);
     }
 }

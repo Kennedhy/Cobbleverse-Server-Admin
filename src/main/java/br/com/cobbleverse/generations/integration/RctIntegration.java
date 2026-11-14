@@ -27,7 +27,7 @@ public final class RctIntegration {
     public static String permittedSeries(String series) {
         if (!GenerationControl.ready() || !GenerationControl.rules().filterGyms()) return series;
         if ("freeroam".equals(series) || GenerationControl.rules().regionAllowed(series)) return series;
-        return GenerationControl.rules().config().initialRegion;
+        return GenerationControl.rules().initialRegion();
     }
 
     public static void register() {
@@ -41,7 +41,7 @@ public final class RctIntegration {
                 if (!GenerationControl.ready() || !GenerationControl.rules().filterGyms()) return;
                 var player = handler.player;
                 var data = RCTMod.getInstance().getTrainerManager().getData(player);
-                String desired = newPlayer ? GenerationControl.rules().config().initialRegion : permittedSeries(data.getCurrentSeries());
+                String desired = newPlayer ? GenerationControl.rules().initialRegion() : permittedSeries(data.getCurrentSeries());
                 if (!Objects.equals(desired, data.getCurrentSeries())) {
                     try {
                         migrate(player,data,desired);

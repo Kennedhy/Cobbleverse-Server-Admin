@@ -3,6 +3,7 @@ package br.com.cobbleverse.generations.integration;
 import br.com.cobbleverse.generations.GenerationControl;
 import br.com.cobbleverse.generations.config.GenerationConfig;
 import br.com.cobbleverse.generations.rules.GenerationRules;
+import br.com.cobbleverse.generations.rules.LegendaryCatalog;
 import com.cobblemon.mod.common.api.events.CobblemonEvents;
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties;
 import com.cobblemon.mod.common.api.pokemon.PokemonSpecies;
@@ -21,6 +22,13 @@ public final class CobblemonIntegration {
     public static boolean captureMultiplierCompatible() {
         return com.cobblemon.mod.common.Cobblemon.INSTANCE.getConfig().getCaptureCalculator()
                 instanceof com.cobblemon.mod.common.pokeball.catching.calculators.CobblemonCaptureCalculator;
+    }
+
+    public static boolean capturePolicyCompatible(GenerationConfig config) {
+        boolean needsDefault = config.captureMultiplier != 1.0
+                || config.legendaryCaptureMultiplier != 1.0
+                || LegendaryCatalog.hasFiniteLimit(config.legendaryLimits);
+        return !needsDefault || captureMultiplierCompatible();
     }
 
     public static void register() {
@@ -73,14 +81,18 @@ public final class CobblemonIntegration {
                     boolean exemptExistingPlayer = !restrictExisting() && pokemon.getOwnerPlayer()!=null;
                     boolean exemptTrainer = !GenerationControl.rules().filterTeams() && !pokemon.isWild() && pokemon.getOwnerPlayer()==null;
                     {
-                        String item=net.minecraft.registry.Registries.ITEM.getId(pokemon.heldItem().getItem()).getPath().replace("_","");
-                        String speciesName=pokemon.getSpecies().getResourceIdentifier().getPath();
-                        PokemonProperties primal=new PokemonProperties(); primal.setForm("Primal");
-                        if (((item.equals("blueorb") && speciesName.equals("kyogre")) || (item.equals("redorb") && speciesName.equals("groudon")))
-                            && !allowedResult(primal,pokemon)) {
-                            event.setReason(Text.literal("Remova o orbe de reversão primal para batalhar neste servidor."));
-                            event.cancel();
-                            return;
+                        String item = net.minecraft.registry.Registries.ITEM.getId(pokemon.heldItem().getItem()).getPath();
+                        String speciesName = pokemon.getSpecies().getResourceIdentifier().getPath();
+                        boolean primalOrb = (item.equals("blue_orb") && speciesName.equals("kyogre"))
+                                || (item.equals("red_orb") && speciesName.equals("groudon"));
+                        if (primalOrb) {
+                            PokemonProperties primal = new PokemonProperties();
+                            primal.setForm("Primal");
+                            if (!allowedResult(primal, pokemon)) {
+                                event.setReason(Text.literal("Remova o orbe de reversão primal para batalhar neste servidor."));
+                                event.cancel();
+                                return;
+                            }
                         }
                     }
                     if (!exemptExistingPlayer && !exemptTrainer && !allowed(pokemon)) {
@@ -143,8 +155,8 @@ public final class CobblemonIntegration {
     }
 
     private static void inspectRegistryRules(GenerationRules rules,ValidationReport report) {
-        if(rules.config().captureMultiplier!=1.0 && !captureMultiplierCompatible())
-            report.errors.add("O multiplicador de captura requer o calculador padrão do Cobblemon.");
+        if(!capturePolicyCompatible(rules.config()))
+            report.errors.add("Os multiplicadores de captura e limites globais lendários requerem o calculador padrão do Cobblemon.");
         for (Species species : PokemonSpecies.getSpecies())
             if (species.getImplemented() && hasAllowedForm(species,rules)) report.allowedSpecies++;
         if (report.allowedSpecies == 0) report.errors.add("Nenhuma espécie ou forma implementada disponível com esta seleção.");
@@ -204,7 +216,6 @@ public final class CobblemonIntegration {
         private final ValidationReport report=new ValidationReport();
         private final GenerationRules rules;
         private final Iterator<Species> species;
-        private int inspectedSpecies;
         private boolean complete;
 
         private BaseValidation(GenerationConfig candidate) {
@@ -217,10 +228,10 @@ public final class CobblemonIntegration {
                 complete=true;
                 return;
             }
-            if(rules.config().captureMultiplier!=1.0 && !captureMultiplierCompatible())
-                report.errors.add("O multiplicador de captura requer o calculador padrão do Cobblemon.");
+            if(!capturePolicyCompatible(rules.config()))
+                report.errors.add("Os multiplicadores de captura e limites globais lendários requerem o calculador padrão do Cobblemon.");
             species=PokemonSpecies.getSpecies().iterator();
-            report.warnings.add("Gerações, ginásios e regras de mundo exigem reinício; XP, limites e captura podem ser aplicados separadamente após salvar.");
+            report.warnings.add("Gerações, ginásios e regras de mundo exigem reinício; XP, captura, shiny e limites lendários podem ser aplicados separadamente após salvar.");
             report.warnings.add("Ginásios em áreas já geradas permanecem no terreno.");
             if(GenerationControl.ready() && GenerationControl.store().startupWarning()!=null)
                 report.warnings.add("Última rejeição de inicialização: "+GenerationControl.store().startupWarning());
@@ -245,14 +256,12 @@ public final class CobblemonIntegration {
 
         public ValidationReport report() { return report; }
         public GenerationRules rules() { return rules; }
-        public int inspectedSpecies() { return inspectedSpecies; }
         public boolean canContinue() { return rules!=null && report.errors.isEmpty(); }
         public boolean step(long deadline) {
             if(complete) return true;
             while(species.hasNext() && System.nanoTime()<deadline) {
                 Species entry=species.next();
                 if(entry.getImplemented() && hasAllowedForm(entry,rules)) report.allowedSpecies++;
-                inspectedSpecies++;
             }
             if(species.hasNext()) return false;
             finishRegistryInspection(rules,report);

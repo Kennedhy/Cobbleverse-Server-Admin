@@ -29,8 +29,11 @@ O usuário pediu explicitamente para remover a interface de configuração dentr
 
 ### Captura
 
-- O controle confirmado para a primeira versão é um multiplicador global da chance de captura.
-- Aplicar o multiplicador preservando os efeitos e diferenças de cada Poké Bola; não substituir a lógica de captura individual das bolas.
+- Oferecer um multiplicador global e um multiplicador adicional para Pokémon lendários, preservando os fatores e efeitos individuais de cada Poké Bola.
+- Permitir limites editáveis por espécie/forma com contagem global para todo o mundo e todos os jogadores; `-1` significa sem limite.
+- Contar Pokémon nas equipes, PCs salvos inclusive offline e custódia do GTS. Não contar Pokémon selvagens ainda soltos; isso evita varrer entidades e chunks.
+- Indexar os dados existentes uma vez ao iniciar o mundo, em lotes cooperativos. Atualizar o índice por eventos de captura/ganho, liberação, evolução, edição de PC e custódia do GTS; não ler PCs em toda captura ou tick.
+- Enquanto a indexação estiver pendente ou se falhar, bloquear capturas que tenham teto finito. O calculador de captura padrão do Cobblemon é necessário para que teto e multiplicadores também cubram Master Ball.
 
 ### Treinadores, dificuldade e recompensas
 
@@ -41,6 +44,13 @@ O usuário pediu explicitamente para remover a interface de configuração dentr
 - Administrar o pagamento de NPCs do CobbleDollars e seu multiplicador de renda. O multiplicador desse mod também afeta Pokémon selvagens; não há configuração de prêmio por treinador individual.
 - Shiny é controlado somente pela taxa global de aparição exposta pelo Cobblemon; explicar que outros sistemas que usam essa taxa global também podem ser afetados.
 
+### Combate de Pokémon selvagens
+
+- Usar o Fight or Flight que já faz parte do modpack para gerenciar ataques diretos de Pokémon selvagens contra jogadores.
+- Expor no painel controles de reação a provocação, ataque sem provocação, restrição de ataques espontâneos à pouca luz, níveis mínimos, limiares/multiplicador de agressividade, ativação de ataques à distância e dano mínimo/máximo para ataques corpo a corpo e à distância.
+- Alterar somente os campos conhecidos de config/fightorflight.json5, preservando opções e comentários desconhecidos; escrita apenas sob ação administrativa e sem trabalho por tick.
+- Credenciais viewer podem consultar, mas não editar. Detectar alterações externas concorrentes e sinalizar que o servidor deve reiniciar para aplicar os novos valores.
+
 ### PC dos jogadores
 
 - Permitir que administradores consultem o PC dos jogadores para gestão e suporte.
@@ -50,6 +60,14 @@ O usuário pediu explicitamente para remover a interface de configuração dentr
 - Aplicar mutações pelo armazenamento oficial do Cobblemon e serializar operações do painel, sem varredura nem rotina por tick.
 - Dar suporte à busca de jogadores conectados e aos dados já salvos no mundo, com acesso protegido e consultas paginadas conforme a implementação atual.
 - Permitir que administradores consultem e editem circuito e treinadores vencidos do progresso RCT individual. O jogador precisa estar conectado e fora de batalha; usar fingerprint contra alterações concorrentes e arquivar o estado anterior.
+
+### GTS e casa de leilões
+
+- Fornecer um mercado integrado pela GUI dos jogadores e administrado no painel web privado.
+- Permitir vender Pokémon do PC e itens, pagando em CobbleDollars. Exibir espécie/forma, IVs, EVs, natureza, shiny e tamanho do Pokémon.
+- Suportar preço fixo e leilão, reserva de lance, reembolso ao ser superado, retirada de pagamentos e entrega segura dos bens.
+- Guardar Pokémon, itens e transações em custódia com reconciliação após reinícios; moderadores podem remover anúncios e devolver o bem, mantendo estorno de lance quando necessário.
+- Manter o addon server-only. A GUI de mercado é voltada a jogadores e não reintroduz configuração administrativa dentro do jogo. Priorizar hooks sob demanda, limites de armazenamento e nenhum ciclo de varredura por entidades ou Pokémon.
 
 ### Interface, acesso e operação
 
@@ -69,7 +87,7 @@ O usuário pediu que fossem pesquisados o site [Cobblemon Extras](https://cobble
 
 ## Ideias futuras, ainda sem compromisso de escopo
 
-Controles adicionais de lendários, eventos especiais ou dados econômicos mais granulares continuam como possibilidades futuras. Não prometa ajustes que os mods integrados não exponham por API ou datapack; confirme compatibilidade antes de adicioná-los.
+Eventos especiais ou dados econômicos mais granulares continuam como possibilidades futuras. Não prometa ajustes que os mods integrados não exponham por API ou datapack; confirme compatibilidade antes de adicioná-los.
 
 ## Validação, servidor de teste e segurança de dados
 
@@ -89,4 +107,7 @@ Controles adicionais de lendários, eventos especiais ou dados econômicos mais 
 
 ## Estado registrado neste repasse
 
-- O projeto existente documenta a versão 0.5.0 preview e validação do pack; o ciclo atual reúne PCs, regras de cap de batalha, progressão RCT, dificuldade e economia de treinadores e taxa shiny para a próxima versão preview. Consulte README.md, docs/IMPROVEMENTS.md e docs/TESTING.md antes de propor duplicatas.
+- A release pública mais recente continua 0.6.0 preview; as mudanças posteriores seguem agrupadas em `Unreleased`, sem criar uma versão para cada ajuste.
+- O GTS/leilões passou por smoke local com o Cobbleverse 1.7.42, Cobblemon 1.7.3, CobbleDollars 2.0.0 Beta 5.1 e cliente conectado sem o addon. GUI aberta, custódia de Pokémon/itens, compra, lances, reembolso, entrega ao vencedor e pagamento pendente foram exercitados. A transação foi chamada pelo fixture de servidor; cliques manuais e captura visual não foram testados.
+- A revisão atual indexa grupos/perfis RCT ao salvar regras, reutiliza tabelas ponderadas de raid em cache limitado e reduz alocações/custos de busca na verificação de batalhas e recuperação de inventário. Build local, 66 testes, auditoria server-only e smoke de raids no pack passaram. Ainda não há benchmark A/B de MSPT, heap ou TPS em servidor dedicado nem smoke de batalha real de treinador. Consulte `docs/TESTING.md`.
+- O workspace pode conter alterações locais não commitadas de funções e redesign do painel. Preserve-as ao continuar; não faça commit, push, tag ou release sem instrução específica nesta etapa.

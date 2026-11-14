@@ -12,7 +12,6 @@ import net.minecraft.util.WorldSavePath;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 
 /** One explicit preview at a time, with filesystem enumeration off-thread and bounded work per tick. */
@@ -21,7 +20,6 @@ public final class ValidationService {
     private static final int MAX_RECHECKS_PER_PLAYER = 8;
     private static Job job;
     private static long connections;
-    private static final LongAdder rejectedStarts=new LongAdder();
     private ValidationService() {}
     public static void register() {
         ServerTickEvents.END_SERVER_TICK.register(ValidationService::tick);
@@ -36,23 +34,8 @@ public final class ValidationService {
         current.cancel();
         return true;
     }
-    public static Map<String,Object> progress(MinecraftServer server) {
-        Job current=job;
-        if(current==null || current.server!=server) return Map.of();
-        LinkedHashMap<String,Object> result=new LinkedHashMap<>();
-        result.put("phase",current.phase);
-        result.put("elapsedMs",TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-current.startedNanos));
-        result.put("playersScanned",current.report.inspectedPlayers);
-        result.put("teamsTotal",current.report.trainerTeams);
-        result.put("teamsAdapted",current.report.adaptedTeams);
-        result.put("speciesScanned",current.base.inspectedSpecies());
-        boolean enumerationAvailable=current.enumeration.isDone()
-                && !current.enumeration.isCompletedExceptionally() && !current.enumeration.isCancelled();
-        result.put("totalPlayers",enumerationAvailable ? current.enumeration.getNow(Set.of()).size() : null);
-        return result;
-    }
     public static boolean start(MinecraftServer server,GenerationConfig candidate,Consumer<ValidationReport> finished) {
-        if(job!=null) { rejectedStarts.increment(); return false; }
+        if(job!=null) return false;
         var frozen=candidate.copy().validated();
         CobblemonIntegration.BaseValidation base=CobblemonIntegration.beginBaseValidation(frozen);
         ValidationReport report=base.report();
@@ -62,7 +45,6 @@ public final class ValidationService {
         catch(Exception e) { fail(report,e); finished.accept(report); }
         return true;
     }
-    public static long rejectedStarts() { return rejectedStarts.sum(); }
     private static void tick(MinecraftServer server) {
         Job current=job;
         if(current==null || current.server!=server) return;
@@ -114,7 +96,6 @@ public final class ValidationService {
         int watchIndex; long watchSweepVersion,stableChangeVersion=Long.MIN_VALUE; boolean watchSweepActive;
         boolean cleaned;
         Iterator<UUID> players; List<Future<?>> barriers; long barrierStart; IncrementalPlayerScan scan; boolean playerImpactPhase,scanIsRecheck;
-        String phase="team-validation";
         final br.com.cobbleverse.generations.data.PolicyResources.TeamPreview teams; final boolean scanPlayers; boolean teamsDone;
         Job(MinecraftServer server,CobblemonIntegration.BaseValidation base,ValidationReport report,Consumer<ValidationReport> finished,boolean scanPlayers,boolean scanTeams) {
             this.server=server;this.base=base;this.rules=base.rules();this.report=report;this.finished=finished;this.scanPlayers=scanPlayers;epoch=connections;
@@ -137,24 +118,20 @@ public final class ValidationService {
         }
         boolean step(long deadline) throws Exception {
             if(System.nanoTime()-startedNanos>TimeUnit.MINUTES.toNanos(10)) throw new IllegalStateException("A análise excedeu dez minutos; tente novamente em um período de menor atividade.");
-            phase="species-validation";
             if(!base.step(deadline)) return false;
             if(!report.errors.isEmpty() || (!scanPlayers && teams==null)) return true;
             if(teams!=null) teams.ensureCurrent();
             if(!teamsDone) {
-                phase="team-validation";
                 if(teams!=null && !teams.step(8,deadline)) return false;
                 teamsDone=true;
                 if(!report.errors.isEmpty()) return true;
             }
             if(players==null) {
-                phase="player-enumeration";
                 if(!enumeration.isDone()) return false;
                 playerImpactPhase=scanPlayers;
                 players=enumeration.get().iterator();
             }
             if(scan!=null) {
-                phase=scanIsRecheck ? "player-store-recheck" : "player-scan";
                 if(scan.step(deadline)) {
                     if(scan.targeted() && scan.snapshotOverflow()) {
                         UUID player=scan.playerId();
@@ -182,11 +159,9 @@ public final class ValidationService {
                     scan=createStoreScan(changedPlayer,targets.values());
                 }
                 scanIsRecheck=true;
-                phase="player-store-recheck";
                 return false;
             }
             if(!players.hasNext()) {
-                phase="consistency-check";
                 if(!checkChanges(deadline)) {
                     if(fileCheck!=null) { fileCheck.cancel(false); fileCheck=null; cachesCheckedBeforeFiles=false; cacheIndex=0; }
                     return false;
@@ -195,14 +170,13 @@ public final class ValidationService {
                     if(!checkCacheGuards(deadline)) return false;
                     cachesCheckedBeforeFiles=true; cacheIndex=0;
                 }
-                if(fileCheck==null) { phase="offline-file-check"; fileCheck=ledger.verify(io); return false; }
+                if(fileCheck==null) { fileCheck=ledger.verify(io); return false; }
                 if(!fileCheck.isDone()) return false;
                 fileCheck.get();
                 if(!checkCacheGuards(deadline)) return false;
                 return checkChanges(deadline);
             }
             if(!waitForStoreWrites()) return false;
-            phase="player-scan";
             scan=createPlayerScan(players.next());
             return false;
         }

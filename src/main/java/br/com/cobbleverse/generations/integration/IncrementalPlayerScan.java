@@ -28,16 +28,31 @@ final class IncrementalPlayerScan {
     private final List<LiveSource> live=new ArrayList<>(); private final CompletableFuture<List<Entry>> offline;
     private Iterator<Entry> rawIterator; private int liveIndex,count,restricted,available,availableRestricted,reserve;
     private boolean hasLiveStore, targeted, snapshotOverflow;
+    private final java.util.function.Consumer<Pokemon> pokemonObserver;
     private Map<Object,LinkedHashMap<UUID,Byte>> storeImpacts;
     private int storeImpactEntries;
     private List<ValidationReport.StoreImpact> previousStoreImpacts;
     private final WatchFactory watch;
 
+    IncrementalPlayerScan(MinecraftServer server, List<FileBackedPokemonStoreFactory<?>> factories, UUID id,
+                          OfflineFileLedger ledger, ValidationIo io, java.util.function.Consumer<Pokemon> pokemonObserver) {
+        this(server, null, null, factories, id, (player, store, available) -> null, ledger,
+                (player, stillCurrent) -> {}, io, false, pokemonObserver);
+    }
+
     IncrementalPlayerScan(MinecraftServer server,GenerationRules rules,ValidationReport report,
                           List<FileBackedPokemonStoreFactory<?>> factories,UUID id,WatchFactory watch,
                           OfflineFileLedger ledger,java.util.function.BiConsumer<UUID,java.util.function.BooleanSupplier> cacheGuard,
                           ValidationIo io,boolean cacheStoreImpacts) {
+        this(server,rules,report,factories,id,watch,ledger,cacheGuard,io,cacheStoreImpacts,null);
+    }
+
+    private IncrementalPlayerScan(MinecraftServer server,GenerationRules rules,ValidationReport report,
+                          List<FileBackedPokemonStoreFactory<?>> factories,UUID id,WatchFactory watch,
+                          OfflineFileLedger ledger,java.util.function.BiConsumer<UUID,java.util.function.BooleanSupplier> cacheGuard,
+                          ValidationIo io,boolean cacheStoreImpacts,java.util.function.Consumer<Pokemon> pokemonObserver) {
         this.id=id; this.server=server; this.rules=rules; this.report=report; this.watch=watch;
+        this.pokemonObserver=pokemonObserver;
         storeImpacts=cacheStoreImpacts ? new LinkedHashMap<>() : null;
         List<FileTask> tasks=new ArrayList<>();
         for(var factory:factories) {
@@ -86,6 +101,7 @@ final class IncrementalPlayerScan {
                           WatchFactory watch,ValidationIo io,List<ValidationReport.StoreImpact> previousStoreImpacts,
                           Collection<CacheWatch.StoreTarget> targets) {
         this.id=id; this.server=server; this.rules=rules; this.report=report; this.watch=watch;
+        this.pokemonObserver=null;
         this.targeted=true;
         this.previousStoreImpacts=List.copyOf(previousStoreImpacts);
         this.storeImpacts=new LinkedHashMap<>();
@@ -117,6 +133,10 @@ final class IncrementalPlayerScan {
             try { pokemon=raw instanceof Pokemon mon ? mon : raw instanceof NbtCompound nbt ? Pokemon.Companion.loadFromNBT(server.getRegistryManager(),nbt) : Pokemon.Companion.loadFromJSON(server.getRegistryManager(),(JsonObject)raw); }
             catch(Exception e) { throw new IllegalStateException("Pokémon ilegível no armazenamento de "+id+"; dados preservados.",e); }
             if(pokemon==null) throw new IllegalStateException("Pokémon inválido no armazenamento de "+id);
+            if(pokemonObserver!=null) {
+                pokemonObserver.accept(pokemon);
+                continue;
+            }
             var species=pokemon.getSpecies();
             boolean blocked=rules.restrictExisting() && !rules.allowed(species.getResourceIdentifier().toString(),species.getNationalPokedexNumber(),pokemon.getForm().getName(),pokemon.getAspects());
             recordStoreImpact(entry.source(),pokemon.getUuid(),blocked,entry.available());
@@ -130,6 +150,7 @@ final class IncrementalPlayerScan {
         return false;
     }
     private void finish() {
+        if(pokemonObserver!=null) return;
         var player=server.getPlayerManager().getPlayer(id);
         String name=player==null ? id.toString() : player.getGameProfile().getName();
         if(targeted) report.replaceStoreImpacts(id,replaceTargetedStoreImpacts(),name);

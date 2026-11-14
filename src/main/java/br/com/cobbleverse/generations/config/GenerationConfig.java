@@ -1,6 +1,7 @@
 package br.com.cobbleverse.generations.config;
 
 import java.util.*;
+import br.com.cobbleverse.generations.rules.LegendaryCatalog;
 
 /** Serializable policy. Instances are copied at each trust boundary. */
 public final class GenerationConfig {
@@ -37,6 +38,10 @@ public final class GenerationConfig {
     /** "team" blocks the whole PvE battle; "pokemon" blocks only over-cap Pokémon from entering PvE. */
     public String overCapBattleBehavior = "team";
     public double captureMultiplier = 1.0;
+    /** Additional multiplier applied only to entries in the legendary catalog. */
+    public double legendaryCaptureMultiplier = 1.0;
+    /** Per-world server-wide limits; -1 means unlimited. */
+    public Map<String, Integer> legendaryLimits = new TreeMap<>(LegendaryCatalog.defaultLimits());
     public Integer shinyRate = null;
 
     public static final List<String> REGIONS = List.of("kanto", "johto", "hoenn", "sinnoh");
@@ -75,6 +80,9 @@ public final class GenerationConfig {
         validateMultiplier(globalXpMultiplier);
         if (!Double.isFinite(captureMultiplier) || captureMultiplier < 0 || captureMultiplier > 100)
             throw new IllegalArgumentException("O multiplicador de captura deve ficar entre 0 e 100.");
+        if (!Double.isFinite(legendaryCaptureMultiplier) || legendaryCaptureMultiplier < 0 || legendaryCaptureMultiplier > 100)
+            throw new IllegalArgumentException("O multiplicador de captura de lendários deve ficar entre 0 e 100.");
+        legendaryLimits = normalizeLegendaryLimits(legendaryLimits);
         if (shinyRate != null && (shinyRate < 1 || shinyRate > 1_000_000))
             throw new IllegalArgumentException("A taxa shiny deve ficar entre 1 e 1000000.");
         playerXpMultipliers = normalizeMultipliers(playerXpMultipliers, true);
@@ -96,6 +104,23 @@ public final class GenerationConfig {
 
     private static void validateMultiplier(double value) {
         if (!Double.isFinite(value) || value < 0 || value > 100) throw new IllegalArgumentException("Multiplicadores de XP devem ficar entre 0 e 100.");
+    }
+
+    private static Map<String, Integer> normalizeLegendaryLimits(Map<String, Integer> limits) {
+        if (limits == null) limits = Map.of();
+        if (limits.size() > LegendaryCatalog.entries().size())
+            throw new IllegalArgumentException("A lista de limites lendários excede o catálogo do painel.");
+        Map<String, Integer> normalized = new TreeMap<>(LegendaryCatalog.defaultLimits());
+        for (var entry : limits.entrySet()) {
+            String key = LegendaryCatalog.normalizeKey(entry.getKey());
+            Integer limit = entry.getValue();
+            if (key == null || LegendaryCatalog.entry(key) == null)
+                throw new IllegalArgumentException("Espécie ou forma lendária desconhecida: " + entry.getKey());
+            if (limit == null || (limit != -1 && (limit < 1 || limit > 1000)))
+                throw new IllegalArgumentException("O limite de " + LegendaryCatalog.entry(key).name() + " deve ser Vários ou ficar entre 1 e 1000.");
+            normalized.put(key, limit);
+        }
+        return normalized;
     }
 
     private static Map<String, Double> normalizeMultipliers(Map<String, Double> entries, boolean players) {

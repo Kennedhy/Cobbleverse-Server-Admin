@@ -10,6 +10,7 @@ base { archivesName = project.archives_base_name }
 repositories {
     mavenCentral()
     maven { url = 'https://maven.fabricmc.net/' }
+    maven { url = 'https://maven.nucleoid.xyz/' }
     exclusiveContent {
         forRepository {
             maven {
@@ -40,6 +41,8 @@ dependencies {
     modImplementation 'maven.modrinth:cobblemon:kF7CvxTo'
     modImplementation 'maven.modrinth:rctapi:9OZx0coL'
     modImplementation 'maven.modrinth:rctmod:gQx1F1dx'
+    // Server-side inventory screens for player market navigation.
+    modImplementation include('eu.pb4:sgui:1.6.1+1.21.1')
     modRuntimeOnly 'maven.modrinth:forge-config-api-port:N5qzq0XV'
     modRuntimeOnly 'maven.modrinth:architectury-api:Wto0RchG'
     // Forge Config API Port keeps these inside its jar, but Loom's development
@@ -77,10 +80,12 @@ sourceSets {
         java {
             srcDir 'src/main/java'
             include 'br/com/cobbleverse/generations/verification/ConnectedCaptureVerification.java'
+            include 'br/com/cobbleverse/generations/verification/ConnectedMarketVerification.java'
             include 'br/com/cobbleverse/generations/verification/ConnectedWildLevelsVerification.java'
             include 'br/com/cobbleverse/generations/verification/ConnectedVerificationEntrypoint.java'
             include 'br/com/cobbleverse/generations/verification/GenerationPolicyVerification.java'
             include 'br/com/cobbleverse/generations/verification/RuntimePolicyVerificationEntrypoint.java'
+            include 'br/com/cobbleverse/generations/verification/RescueVerificationEntrypoint.java'
         }
         resources.srcDirs = ['src/verification/resources']
         // Compile fixtures against the same mapped Minecraft and mod APIs as the production code.
@@ -123,6 +128,13 @@ tasks.register('buildWeb', Exec) {
     else commandLine 'npm', 'run', 'build'
 }
 processResources.dependsOn tasks.named('buildWeb')
+
+tasks.named('jar') {
+    from('licenses/SGUI-LGPL-3.0.txt') {
+        into 'META-INF/licenses'
+        rename { 'sgui-LGPL-3.0.txt' }
+    }
+}
 
 tasks.withType(JavaCompile).configureEach {
     options.release = 21

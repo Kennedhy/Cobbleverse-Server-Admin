@@ -31,7 +31,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /** Applies configured profiles only to RCT battle copies of trainer Pokémon. */
 public final class TrainerDifficultyManager {
@@ -41,7 +40,7 @@ public final class TrainerDifficultyManager {
     private static final List<Stat> MAIN_STATS = List.of(Stats.HP, Stats.ATTACK, Stats.DEFENCE,
             Stats.SPECIAL_ATTACK, Stats.SPECIAL_DEFENCE, Stats.SPEED);
 
-    private static volatile TrainerDifficultyConfig active = new TrainerDifficultyConfig();
+    private static volatile TrainerDifficultyIndex active = TrainerDifficultyIndex.build(new TrainerDifficultyConfig());
     private static volatile Map<String, Object> trainerTypes = Map.of();
     private static volatile List<Map<String, String>> trainers = List.of();
     private static volatile boolean catalogReady;
@@ -50,6 +49,12 @@ public final class TrainerDifficultyManager {
     private TrainerDifficultyManager() {}
 
     public static Gson gson() { return GSON; }
+
+    public static final class StaleConfigurationException extends IllegalStateException {
+        public StaleConfigurationException() {
+            super("A dificuldade foi alterada por outra sessão. Atualize a página antes de salvar.");
+        }
+    }
 
     public static synchronized void register() {
         if (registered) return;
@@ -81,9 +86,9 @@ public final class TrainerDifficultyManager {
             long size = Files.size(file);
             if (size < 1 || size > MAX_CONFIG_BYTES) throw new IOException("Arquivo de dificuldade vazio ou maior que 64 KiB.");
             TrainerDifficultyConfig parsed = GSON.fromJson(Files.readString(file, StandardCharsets.UTF_8), TrainerDifficultyConfig.class);
-            active = (parsed == null ? new TrainerDifficultyConfig() : parsed).validated();
+            active = TrainerDifficultyIndex.build(parsed == null ? new TrainerDifficultyConfig() : parsed);
         } catch (Exception failure) {
-            active = new TrainerDifficultyConfig();
+            active = TrainerDifficultyIndex.build(new TrainerDifficultyConfig());
             LOGGER.error("Configuração de dificuldade de treinadores inválida; dificuldade padrão preservada. Corrija {}.", file, failure);
         }
     }
@@ -91,7 +96,7 @@ public final class TrainerDifficultyManager {
     /** Returns config and an immutable, event-refreshed RCT catalog for the admin page. */
     public static Map<String, Object> view() {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("config", active.copy());
+        result.put("config", active.config().copy());
         result.put("trainerTypes", trainerTypes);
         result.put("trainers", trainers);
         result.put("catalogReady", catalogReady);
@@ -107,7 +112,9 @@ public final class TrainerDifficultyManager {
         TrainerDifficultyConfig parsed = GSON.fromJson(candidate, TrainerDifficultyConfig.class);
         if (parsed == null) throw new IllegalArgumentException("Configuração de dificuldade vazia.");
         parsed.validated();
-        parsed.revision = Math.max(active.revision + 1, parsed.revision);
+        if (parsed.revision != active.config().revision) throw new StaleConfigurationException();
+        parsed.revision = Math.addExact(active.config().revision, 1);
+        TrainerDifficultyIndex next = TrainerDifficultyIndex.build(parsed);
         String serialized = GSON.toJson(parsed);
         if (serialized.getBytes(StandardCharsets.UTF_8).length > MAX_CONFIG_BYTES)
             throw new IllegalArgumentException("A configuração de dificuldade excede 64 KiB.");
@@ -122,7 +129,7 @@ public final class TrainerDifficultyManager {
             } catch (AtomicMoveNotSupportedException unsupported) {
                 Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
             }
-            active = parsed;
+            active = next;
         } finally {
             Files.deleteIfExists(temporary);
         }
@@ -160,8 +167,8 @@ public final class TrainerDifficultyManager {
     }
 
     private static void apply(PokemonBattle battle) {
-        TrainerDifficultyConfig policy = active;
-        if (!policy.enabled || battle == null || battle.isPvP() || !battle.isPvN()) return;
+        TrainerDifficultyIndex policy = active;
+        if (!policy.config().enabled || battle == null || battle.isPvP() || !battle.isPvN()) return;
         var manager = RCTMod.getInstance().getTrainerManager();
         for (BattleSide trainerSide : List.of(battle.getSide1(), battle.getSide2())) {
             List<UUID> opponents = playerUuids(trainerSide.getOppositeSide());
@@ -171,7 +178,7 @@ public final class TrainerDifficultyManager {
                 TrainerMobData data = manager.getData(trainerMob);
                 if (data == null) continue;
                 String type = data.getType() == null ? "unknown" : data.getType().id();
-                String trainerGroup = trainerGroup(policy, trainerMob.getTrainerId(), type);
+                String trainerGroup = policy.trainerGroup(trainerMob.getTrainerId(), type);
                 TrainerDifficultyConfig.Profile profile = chooseProfile(policy, trainerGroup, opponents, actor.getPokemonList());
                 for (BattlePokemon battlePokemon : actor.getPokemonList()) {
                     // RCT builds trainer teams as BattlePokemon(original, clone). Never touch shared/source data.
@@ -192,46 +199,26 @@ public final class TrainerDifficultyManager {
         return List.copyOf(result);
     }
 
-    private static String trainerGroup(TrainerDifficultyConfig policy, String trainerId, String type) {
-        if (trainerId != null) {
-            String id = trainerId.toLowerCase(Locale.ROOT);
-            for (var group : policy.trainerGroups) if (group.trainerIds.contains(id)) return group.id;
-        }
-        String normalizedType = type == null ? "unknown" : type.toLowerCase(Locale.ROOT);
-        for (var group : policy.trainerGroups) if (group.trainerTypes.contains(normalizedType)) return group.id;
-        return null;
-    }
-
-    private static String playerGroup(TrainerDifficultyConfig policy, UUID player) {
-        String uuid = player.toString();
-        for (var group : policy.playerGroups) if (group.playerUuids.contains(uuid)) return group.id;
-        return null;
-    }
-
-    private static TrainerDifficultyConfig.Profile chooseProfile(TrainerDifficultyConfig policy, String trainerGroup,
+    private static TrainerDifficultyConfig.Profile chooseProfile(TrainerDifficultyIndex policy, String trainerGroup,
                                                                    List<UUID> opponents, List<BattlePokemon> team) {
-        if (opponents.isEmpty()) return resolveProfile(policy, trainerGroup, null);
-        List<TrainerDifficultyConfig.Profile> candidates = new ArrayList<>(opponents.size());
-        for (UUID opponent : opponents) candidates.add(resolveProfile(policy, trainerGroup, playerGroup(policy, opponent)));
-        // Cooperative battles use the hardest applicable player profile so a grouped teammate cannot lower it.
-        return candidates.stream().max(Comparator
-                .comparingLong((TrainerDifficultyConfig.Profile profile) -> levelScore(profile, team))
-                .thenComparingInt(profile -> profile.minimumIv)
-                .thenComparingInt(profile -> profile.evPerStat)).orElse(policy.defaultProfile);
-    }
-
-    private static TrainerDifficultyConfig.Profile resolveProfile(TrainerDifficultyConfig policy, String trainerGroup, String playerGroup) {
-        TrainerDifficultyConfig.ProfileRule best = null;
-        int bestScore = -1;
-        for (var rule : policy.profiles) {
-            boolean trainerMatches = rule.trainerGroup.equals("*") || Objects.equals(rule.trainerGroup, trainerGroup);
-            boolean playerMatches = rule.playerGroup.equals("*") || Objects.equals(rule.playerGroup, playerGroup);
-            if (!trainerMatches || !playerMatches) continue;
-            // Pair > trainer-only > player-only; trainer group wins equal-specificity ties by design.
-            int score = (rule.trainerGroup.equals("*") ? 0 : 2) + (rule.playerGroup.equals("*") ? 0 : 1);
-            if (score > bestScore) { best = rule; bestScore = score; }
+        if (opponents.isEmpty()) return policy.resolveProfile(trainerGroup, null);
+        TrainerDifficultyConfig.Profile hardest = null;
+        long hardestLevel = Long.MIN_VALUE;
+        int hardestIv = Integer.MIN_VALUE;
+        int hardestEv = Integer.MIN_VALUE;
+        for (UUID opponent : opponents) {
+            TrainerDifficultyConfig.Profile candidate = policy.resolveProfile(trainerGroup, policy.playerGroup(opponent));
+            long level = levelScore(candidate, team);
+            if (level > hardestLevel || (level == hardestLevel && candidate.minimumIv > hardestIv)
+                    || (level == hardestLevel && candidate.minimumIv == hardestIv && candidate.evPerStat > hardestEv)) {
+                hardest = candidate;
+                hardestLevel = level;
+                hardestIv = candidate.minimumIv;
+                hardestEv = candidate.evPerStat;
+            }
         }
-        return best == null ? policy.defaultProfile : best.profile;
+        // Cooperative battles use the hardest applicable player profile so a grouped teammate cannot lower it.
+        return hardest == null ? policy.config().defaultProfile : hardest;
     }
 
     private static long levelScore(TrainerDifficultyConfig.Profile profile, List<BattlePokemon> team) {

@@ -2,6 +2,57 @@
 
 O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este documento separa o que foi observado do que ainda precisa de servidor e jogadores reais.
 
+## Limites lendários — build e smoke local (2026-11-14)
+
+### Revisão geral em andamento
+
+- O resgate passou a confirmar a gravação de forma assíncrona pela fila do armazenamento. O teste descartável de 14/11/2026 ocupou essa fila, mediu 51 ms para a chamada de resgate, observou dez ticks avançando antes de liberar a gravação e confirmou a entrega de um único UUID. Pedidos repetidos foram recusados. O resultado local está em `build/legendary-review-1f8ee8a0/rescue-review-result.json`.
+- Esse cenário usa um jogador sintético offline. A liberação final para jogador conectado e a reconexão durante a confirmação ainda precisam de verificação.
+- O cache da ordenação do mercado tem teste de atualização e rollback. A suíte contém 67 testes, todos aprovados, e o build do JAR/painel passou após os ajustes.
+- Duas sessões HTTP autenticadas validaram a proteção da dificuldade de treinadores em um servidor descartável: a primeira salvou uma alteração, a segunda tentou salvar a revisão antiga e recebeu HTTP 409. Uma leitura posterior confirmou a preservação da configuração nova e o incremento único da revisão. As opções anteriores foram restauradas e o servidor foi encerrado. Evidência: `build/legendary-review-1f8ee8a0/trainer-conflict-result.json`. A primeira tentativa encontrou HTTP 503 durante a inicialização; a execução aprovada aguardou o carregamento e permitiu repetição limitada apenas da leitura.
+- Uma medição local de `MarketStore.update` usou 100 anúncios com payload sintético de 8 KiB cada e 500 transações concluídas sem payload. Após dez aquecimentos, 50 gravações do journal de 963.308 bytes tiveram mediana de 8,68 ms, p95 de 11,35 ms e máximo de 12,37 ms. Isso inclui serialização, cópia para rollback, `force(true)` e substituição do arquivo. O script local está em `build/MarketJournalProbe.java`. Não representa uma operação financeira inteira, o tamanho máximo permitido, discos de produção ou TPS/MSPT sob carga; os resultados não justificam remover a confirmação durável.
+- O estado nulo em um registro de resgate agora segue a recusa explícita de registro inválido, sem lançar `NullPointerException`. Após o ajuste, `test remapJar` passou novamente; o verificador confirmou 184 classes, 37 mixins e assets web no JAR somente para servidor.
+- A revisão também adicionou cancelamento de leituras substituídas no painel do mercado e invalidação do cache de reprodução ao recarregar datapacks. A validação integrada dessas mudanças, a reconexão durante resgate e a revisão das demais gravações na thread do jogo continuam pendentes.
+
+#### Auditoria dos caminhos de gravação (14/11/2026)
+
+| Caminho | Execução observada no código | Decisão da revisão |
+| --- | --- | --- |
+| Confirmação de resgate | Serializa o store no jogo; grava pela fila do Cobblemon e agenda a conclusão no jogo | Removida a espera bloqueante; registro inicial pequeno ainda é gravado antes de conceder o Pokémon |
+| Custódia e retirada de Pokémon no mercado | Espera de até dez segundos no executor `SAVE_WAITER`, com fila de 32; confirmação retorna à thread do jogo | Mantida a espera fora do jogo e a recuperação de operações pendentes |
+| Journal financeiro e inventário de itens | Gravação síncrona durante a transação, com limites de registros/payload | Mantida a confirmação antes de movimentar bens; custo do journal medido acima, operação completa ainda sem benchmark |
+| Migração automática de circuito RCT | Arquiva e grava o histórico no login somente quando o circuito muda | Mantida a preservação antes do setter que limpa o progresso; não é uma gravação por tick |
+| Edição administrativa de progresso | Prepara no jogo, persiste no worker HTTP e aplica no jogo com verificação de estado | Mantida a divisão existente e o rollback do histórico em caso de conflito |
+| Dificuldade de treinadores | Valida e constrói o índice antes da escrita atômica no worker HTTP | Protegida por revisão; conflito entre sessões validado em runtime |
+| Varredura de validação | Leitura assíncrona e etapas cooperativas com orçamento de 1–3 ms, rechecagens e duração limitadas | Mantidos os limites; não transformada em varredura permanente |
+
+Esta auditoria descreve os caminhos inspecionados, não garante ausência de pausas do sistema de arquivos nem desempenho sob carga em outra máquina.
+
+- `compileJava`, `remapJar`, o build Vite (`npm run build`) e `git diff --check` passaram depois da implementação do índice global e da página de captura/lendários.
+- Na revisão de desempenho, o build e os 66 testes automatizados passaram. A auditoria confirmou o JAR somente para servidor e os arquivos do painel embutidos.
+- Em uma cópia descartável do Cobbleverse com Cobblemon 1.7.3, a equipe salva de um jogador offline retornou um Mewtwo de um total máximo de dois. A edição administrativa no PC ocupou a última vaga e o valor persistiu após reiniciar. A API retornou o mesmo total para administradores e leitores e recusou adicionar um terceiro Mewtwo com HTTP 409.
+- O smoke cobriu inicialização, leitura do mundo, persistência e aplicação do teto pelo PC. Captura em jogo com Master Ball, capturas concorrentes, evolução e transferência de lendários pelo GTS ainda não foram exercitadas. O teste local não mediu TPS nem MSPT.
+
+## Ataques de Pokémon selvagens — smoke local (2026-11-14)
+
+- `npm run build` e `gradlew.bat remapJar` passaram com a nova página e a API de combate selvagem. O JAR server-only contém 175 classes, 36 mixins e 709.143 bytes; os assets web estão incluídos. SHA-256: `CA531334768125896D6B0943E1465F6CB328D226A173AB07F0241390DC7693EE`.
+- Uma cópia descartável do Cobbleverse iniciou em `build/pack-smoke-gts-runtime/server`, Minecraft `127.0.0.1:25593`, painel `127.0.0.1:18771`; o modpack carregou Fight or Flight. A página e o bundle foram servidos pelo painel (HTTP 200), e a rota `/api/wild-combat` leu a configuração real `fightorflight.json5`.
+- Com a credencial admin, a API salvou o dano máximo corpo a corpo de 5 para 5,5 e, numa segunda alteração, o nível mínimo de 15 para 16, a opção de pouca luz e o limiar neutro de 25 para 30. As releituras confirmaram cada valor e `restartRequired=true`. A comparação do arquivo antes/depois confirmou que cada gravação só alterou as chaves selecionadas.
+- A credencial viewer consultou a página, mas recebeu 403 ao tentar salvar; uma revisão desatualizada foi recusada com 409. A configuração, as propriedades do servidor, o JAR e o fixture da cópia foram restaurados após o smoke; as portas temporárias foram liberadas. A instância original do launcher não foi modificada.
+- O smoke confirma o gerenciamento e a persistência dos controles de Fight or Flight, não uma batalha com jogador conectado. A agressão e o dano efetivos em jogo ainda precisam ser observados com um jogador no mundo; não houve benchmark de TPS, MSPT, heap ou GC.
+
+## GTS e leilões — verificação atual (2026-11-14)
+
+- A revisão de performance adicionou índices de grupos/perfis RCT para o caminho de início de batalha, cache limitado das distribuições de raid, evitou criar propriedades Primal quando o Pokémon não tem orbe relevante e trocou a busca aninhada de marcadores no inventário. `gradlew.bat --no-daemon --max-workers=1 test remapJar remapVerificationJar` passou com **66 testes, 0 falhas, 0 erros e 0 ignorados**; a etapa web ficou corretamente `UP-TO-DATE`. `git diff --check` passou, com avisos de conversão normal de LF/CRLF nos arquivos editados.
+- `tools/verify_server_jar.py` confirmou o JAR server-only atual: 172 classes, 36 mixins, 696.831 bytes e assets web. SHA-256: `8A551843B3B49B468504BCCC7A89BF44CE11A4BC5B5914FA07159C1FDD88FCAF`. O artefato inclui SGui 1.6.1+1.21.1 como biblioteca aninhada e o texto LGPL-3.0 correspondente; o fixture de teste não está no JAR de produção.
+- O smoke usou o Cobbleverse 1.7.42 fixado, Cobblemon 1.7.3 e CobbleDollars 2.0.0 Beta 5.1. O servidor dedicado isolado carregou o JAR atual em `build/pack-smoke-gts-runtime/server`, mundo `smoke-world`, porta `25592`; o painel abriu em `127.0.0.1:18770`. Um cliente Fabric com o pack completo, sem o JAR do gerenciador, conectou como `MarketSmoke`.
+- O fixture conectado chamou a GUI `/mercado` no jogador real. CobbleDollars foi detectado. O fluxo de Pokémon criou anúncio a partir do PC, preservou IVs/EVs, cancelou e retirou o mesmo Pokémon; o fluxo de item anunciou três diamantes, cancelou e confirmou a devolução exata de três itens sem marcador de custódia restante. O resultado está em `build/pack-smoke-gts-runtime/server/connected-market-result.json`.
+- As rotas autenticadas de configurações, anúncios e transações do painel responderam corretamente; a simulação do mesmo smoke confirmou filtro de gerações, XP por jogador/grupo e cap global. O servidor temporário terminou e as portas `25592` e `18770` foram liberadas; os listeners preexistentes foram preservados.
+- No smoke dedicado sem cliente, a política Kanto passou contra os recursos do pack: 552 entradas de spawn, 9 estruturas de ginásio e 1.714 equipes RCT. Foram verificadas 19.225 raids (3.057 permitidas e 16.168 bloqueadas); a rolagem rejeitou um chefe proibido, selecionou um permitido duas vezes usando a tabela em cache e ignorou peso zero. Relatório: `build/pack-smoke-gts-runtime/server/runtime-policy-result.json`.
+- O fixture abriu a GUI `/mercado` no cliente conectado, mas executou as transações diretamente pelos serviços; não houve automação de cliques/teclado nem inspeção por captura de tela. Compra por preço fixo debitou 250 de um saldo de teste persistido de 2.000 e entregou dois diamantes. No leilão, os lances de 100 e 200 debitaram o saldo corretamente, o lance superado gerou reembolso de 100 e, ao expirar, o vencedor recebeu os dois diamantes; a transação registrou o pagamento de 200 ao vendedor offline como pendente. O saldo final do comprador foi 1.550 e a pilha final, sete diamantes. O resultado completo está em `build/pack-smoke-gts-runtime/server/connected-market-result.json`.
+- A GUI foi aberta e o cliente permaneceu conectado para inspeção, mas não houve validação visual por captura nem teste manual de cliques. A recuperação após queda no meio de cada etapa financeira continua sem runtime dedicado. Uma execução mais ampla do smoke retornou HTTP 503 na consulta de jogadores do PC antes dessas etapas; o painel e o helper de smoke agora repetem leituras/503 transitórios com limite, mas essa consulta ainda não foi reexecutada sob contenção.
+- Não foi medido MSPT, TPS, heap ou GC sob carga, nem testada uma batalha real de treinador após esta refatoração. Os testes unitários verificam a precedência dos índices e a distribuição ponderada; falta validação A/B em host dedicado. O mercado mantém limites de registros/payload, uma fila limitada de espera de salvamento e nenhuma varredura contínua de Pokémon; o custo do journal síncrono durante transações também precisa ser medido.
+
 ## Versão 0.6.0 Preview — build e smoke local
 
 - `gradlew.bat --no-daemon --max-workers=1 remapJar` e `npm run build` passaram localmente. O workflow [Build 43489280795](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/43489280795) passou no commit final `3192c0e`, incluindo a suíte automatizada, o empacotamento e a auditoria server-only. A [release preview v0.6.0](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases/tag/v0.6.0) publicou o JAR, o helper SSH, o preparador da pasta de mods e `SHA256SUMS.txt`; o JAR baixado também passou pelo verificador server-only (150 classes, 35 mixins, 499.847 bytes).
@@ -101,11 +152,13 @@ Esse teste não validou host dedicado via SSH, carga real, migração de progres
 | Compilação e empacotamento 0.6.0 | Build `43489280795` concluído | Testes automatizados, JAR remapeado e auditoria server-only; o JAR publicado também foi baixado e verificado |
 | Metadados server-only | Verificados no JAR 0.6.0 | 150 classes, 35 mixins e assets web; sem classes cliente |
 | Login, dashboard e reinício | Smoke local 0.6.0 observado | Login admin, players, reinício disponível via supervisor; sem campos de monitoramento de servidor |
+| Pokémon selvagens | Smoke API local 2026-11-14 | Leitura/gravação de danos e agressividade, persistência, viewer 403 e revisão vencida 409; sem jogador em combate |
 | Aparições e recompensas | Smoke local 0.6.0 observado | API RCT e CobbleDollars; mudança de spawn aplicada e restaurada |
 | Dificuldade por grupos | Smoke local 0.6.0 observado | Catálogo de 1.559 treinadores/10 categorias, dois grupos, perfil combinado persistido; viewer GET 200 e PUT 403 |
 | PC e progressão individual | Build local concluído | Consultas/edições compilam; requer jogador conectado para validar dados reais ao vivo |
 | Batalhas PvE/PvP acima do cap | Build local concluído | Hooks compilam; falta batalha real para verificar bloqueio, troca de Pokémon e isenção PvP |
 | Gerações, ginásios, XP, níveis e captura | Smoke `42505819843` observado | Ver os resultados históricos do pack no Build 0.5.0 abaixo |
+| GTS: GUI, anúncios e retiradas | Smoke local 0.6.0 conectado | Pokémon com IV/EV e item anunciados/cancelados/retirados; compra fixa, débito CobbleDollars, lances, reembolso, entrega do leilão e pagamento pendente do vendedor exercitados |
 | Cliente do pack sem o addon | Smoke `42505819843` conectado em Linux | [Execução do smoke histórico](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/42505819843) |
 | Acesso privado e desempenho sob carga | Pendente | Requer host dedicado, jogadores e benchmark A/B representativos |
 | Tailscale Serve ou túnel SSH no host de destino | Pendente | Requer host acessível pela rede privada |

@@ -153,7 +153,7 @@ public final class PlayerRuntimeChecks {
             int[] count={0}; for(var pokemon:party) if(pokemon.getUuid().equals(receipt.pokemonId)) count[0]++;
             for(var pokemon:pc) if(pokemon.getUuid().equals(receipt.pokemonId)) count[0]++;
             check("rescue: repeated request and recovery cannot duplicate",denied && count[0]==1 && !RescueService.eligible(player),passed,failed);
-            check("rescue: committed starter unlocked",!RescueService.pending(pc.get(receipt.pokemonId)) && "delivered".equals(receipt.state),passed,failed);
+            check("rescue: starter stays locked while asynchronous save is pending",RescueService.pending(pc.get(receipt.pokemonId)) && "prepared".equals(receipt.state),passed,failed);
             ConfigStore.write(prior,Map.of("owner",player.getUuid(),"preservedPokemon",snapshots.keySet(),"rescueId",receipt.pokemonId));
             detail.put("rescueFixtureOwner",player.getUuid().toString());
 
@@ -169,7 +169,7 @@ public final class PlayerRuntimeChecks {
             ConfigStore.write(reservationPath,reservation);
             RescueService.recover(recoveryPlayer); RescueService.recover(recoveryPlayer);
             int sameId=0; for(var pokemon:recoveryParty) if(pokemon.getUuid().equals(reserved.getUuid())) sameId++;
-            check("rescue: interrupted delivery recovers the same UUID once",sameId==1 && !RescueService.pending(recoveryParty.get(reserved.getUuid())),passed,failed);
+            check("rescue: interrupted delivery reserves the same UUID once",sameId==1 && RescueService.pending(recoveryParty.get(reserved.getUuid())),passed,failed);
         }
         // The RCT fixture temporarily updates the sync state of this explicitly named dev client,
         // but never replaces its live TrainerPlayerData. Restore its sync state and archive in finally.

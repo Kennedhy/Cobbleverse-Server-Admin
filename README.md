@@ -15,7 +15,7 @@ Addon Fabric **server-only** para administrar regras do Cobbleverse por um paine
 - Multiplicador de XP global, grupos criados no painel e ajustes por jogador.
 - Limite de nível de Pokémon selvagens, global ou derivado do progresso RCT. Perto de vários jogadores, usa o maior limite aplicável.
 - Regras opcionais de cap em PvE: bloquear a batalha inteira ou somente o Pokémon acima do cap; PvP não recebe bloqueio de nível.
-- Multiplicador global de captura que preserva o efeito das Poké Bolas e taxa opcional de aparição shiny.
+- Multiplicadores global e adicional para captura de lendários, preservando os efeitos das Poké Bolas; limite de quantidade compartilhado por mundo para cada espécie/forma e taxa opcional de aparição shiny.
 - Aparição de treinadores RCT: chance, frequência, limites, distância, cartão e NPC de associação.
 - Dificuldade de batalhas RCT por grupos de treinadores e jogadores, com ajustes em nível, IV e EV aplicados apenas às cópias de batalha.
 - Recompensas CobbleDollars de NPC e multiplicador global de renda. O multiplicador também afeta Pokémon selvagens; valores de prêmio individuais não são oferecidos pelo mod.
@@ -23,8 +23,10 @@ Addon Fabric **server-only** para administrar regras do Cobbleverse por um paine
 - Validação sob demanda, histórico de configurações, descarte de rascunho e restauração da revisão anterior.
 - Credenciais de administrador e consulta gerenciadas pelo console, com autoria por conta no histórico.
 - Dashboard de jogadores online com acesso ao PC e reinício pelo supervisor do servidor.
+- GTS e leilões por CobbleDollars em uma GUI de jogador: anúncios de Pokémon do PC e itens da mão, lances, reembolsos e retiradas.
+- Administração do mercado no painel web: consulta e moderação de anúncios, transações concluídas, operações pendentes e limites do servidor.
 
-As configurações de gerações, ginásios, XP, nível, captura e shiny continuam seguindo o fluxo de revisão, validação e salvamento do painel. XP, níveis, captura e shiny podem ser aplicados ao vivo; gerações, ginásios, datapacks e regras de mundo exigem reinício. As telas de treinadores salvam separadamente: spawn e economia usam as APIs do RCT/CobbleDollars, e a dificuldade vale nas próximas batalhas. Progresso RCT só pode ser editado com o jogador conectado e fora de batalha. Pokémon e estruturas existentes não são removidos.
+As configurações de gerações, ginásios, XP, nível, captura, shiny e limites lendários seguem o fluxo de revisão, validação e salvamento do painel. XP, níveis, captura, shiny e limites lendários podem ser aplicados ao vivo; gerações, ginásios, datapacks e regras de mundo exigem reinício. A contagem lendária é compartilhada entre jogadores do mesmo mundo e considera equipes, PCs offline e custódia do GTS; Pokémon selvagens soltos não entram no total. As telas de treinadores salvam separadamente: spawn e economia usam as APIs do RCT/CobbleDollars, e a dificuldade vale nas próximas batalhas. Progresso RCT só pode ser editado com o jogador conectado e fora de batalha. Pokémon e estruturas existentes não são removidos.
 
 ## Compatibilidade
 
@@ -37,8 +39,12 @@ As configurações de gerações, ginásios, XP, nível, captura e shiny continu
 | Cobblemon | 1.7.3 |
 | Radical Cobblemon Trainers | 0.18.1-beta |
 | RCT API | 0.15.2-beta |
+| CobbleDollars (GTS) | 2.0.0 Beta 5.1 |
+| SGui (included in JAR) | 1.6.1+1.21.1 |
 
 As integrações de raids, megaevoluções e spawns de outros mods dependem das versões listadas no modpack. Consulte [limitações e testes pendentes](docs/TESTING.md).
+
+O mercado requer CobbleDollars 2.0.0 Beta 5.1. A tela de jogador usa SGui, incluído como dependência aninhada server-side; jogadores não precisam instalar este addon nem uma dependência adicional no cliente.
 
 ## Instalação no servidor
 
@@ -74,8 +80,8 @@ O JAR remapeado fica em `build/libs/`. React, Vite e Node geram os arquivos est�
 
 O servidor HTTP usa o JDK, tokens por conta, sessões, validação de origem e sem CORS. As credenciais ficam nos dados do mundo; o mod tenta restringir as permissões dos arquivos e da pasta ao usuário do servidor. Revisões feitas pelo painel identificam a conta no histórico. O helper PowerShell facilita um túnel SSH no Windows; `prepare_server_mods.py` cria uma cópia de mods para servidor sem alterar a instância cliente. Mais detalhes em [Administração](docs/ADMIN.md).
 
-O addon não varre jogadores, Pokémon, entidades ou chunks continuamente. Validações pesadas só começam após solicitação administrativa e são processadas em lotes. Não foram incluídas cópias de outros mods nem uma segunda camada de otimização. **Ainda não há benchmark A/B que prove ganho de TPS ou memória**; consulte [arquitetura e custo](docs/ARCHITECTURE.md).
+O addon não varre jogadores, Pokémon ou chunks continuamente. O limite lendário faz uma indexação única e cooperativa dos PCs/equipes ao iniciar o mundo e mantém as contagens por eventos; ela falha de forma segura se algum arquivo não puder ser lido. O mercado usa operações sob demanda e mantém apenas uma comparação de prazo por tick; a lista limitada de anúncios só é examinada quando algum anúncio vence. Custódias e diário de transações ficam em `<mundo>/generation-control/market/market.json`, com limites para anúncios e histórico. Validações pesadas só começam após solicitação administrativa e são processadas em lotes. Não foram incluídas cópias de Cobblemon Extras nem uma segunda camada de otimização. **Ainda não há benchmark A/B que prove ganho de TPS ou memória**; consulte [arquitetura e custo](docs/ARCHITECTURE.md) e [estado de validação](docs/TESTING.md).
 
 ## Licença
 
-Código deste projeto sob [MIT](LICENSE). O JAR não redistribui Cobblemon, RCT ou outros mods de terceiros; cada dependência mantém os termos e a licença de seu autor.
+O código deste projeto está sob [MIT](LICENSE). O JAR incorpora SGui 1.6.1+1.21.1 como biblioteca aninhada; ela continua sob LGPL-3.0 e a licença acompanha o JAR e o código-fonte em [licenses/SGUI-LGPL-3.0.txt](licenses/SGUI-LGPL-3.0.txt). Veja [avisos de terceiros](THIRD_PARTY_NOTICES.md). Cobblemon e RCT são dependências do servidor e não são incorporados ao artefato.

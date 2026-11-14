@@ -24,7 +24,7 @@ function ActiveRules({ rules, canEdit, onPage }) {
     ['Bloqueio em PvE', 'scroll', rules.manageExperience && rules.blockOverCapPokemonInBattles
       ? rules.overCapBattleBehavior === 'pokemon' ? 'Só Pokémon acima do cap' : 'Batalha inteira'
       : 'Desativado', 'experience'],
-    ['Chance de captura', 'ball', `${formatMultiplier(rules.captureMultiplier)}× global`, 'capture'],
+    ['Chance de captura', 'ball', `${formatMultiplier(rules.captureMultiplier)}× global · ${formatMultiplier(rules.legendaryCaptureMultiplier)}× lendários`, 'capture'],
   ] : [];
 
   return <section className="dex-frame dex-panel dex-rules-panel">

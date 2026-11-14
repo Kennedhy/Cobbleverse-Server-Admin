@@ -17,10 +17,11 @@ import net.minecraft.text.Text;
 import java.nio.file.*;
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CompletableFuture;
 
 public final class RescueService {
     private static final String PENDING="generation_control_rescue_pending";
+    private static final Map<UUID, Object> deliveries = new HashMap<>();
     private static final List<String> STARTERS=List.of("bulbasaur","charmander","squirtle","chikorita","cyndaquil","totodile","treecko","torchic","mudkip","turtwig","chimchar","piplup","snivy","tepig","oshawott","chespin","fennekin","froakie","rowlet","litten","popplio","grookey","scorbunny","sobble","sprigatito","fuecoco","quaxly");
     public static final class Receipt {
         public UUID pokemonId;
@@ -32,6 +33,7 @@ public final class RescueService {
     private RescueService() {}
 
     public static void register() {
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(server -> deliveries.clear());
         ServerPlayConnectionEvents.JOIN.register((handler,sender,server) -> server.execute(() -> {
             try {
                 recover(handler.player);
@@ -53,11 +55,17 @@ public final class RescueService {
     private static Path receiptPath(UUID player) { return GenerationControl.store().directory().resolve("rescues").resolve(player+".json"); }
     private static Receipt read(UUID player) throws java.io.IOException {
         Path path=receiptPath(player);
-        return Files.exists(path) ? ConfigStore.GSON.fromJson(Files.readString(path),Receipt.class) : null;
+        if (Files.notExists(path)) return null;
+        if (Files.size(path) > 1024 * 1024) throw new java.io.IOException("Registro de resgate excede 1 MiB.");
+        Receipt receipt = ConfigStore.GSON.fromJson(Files.readString(path), Receipt.class);
+        if (receipt == null || receipt.pokemonId == null || receipt.snapshot == null
+                || !("prepared".equals(receipt.state) || "delivered".equals(receipt.state)))
+            throw new java.io.IOException("Registro de resgate inválido; peça ao administrador para verificar o histórico.");
+        return receipt;
     }
 
     public static boolean eligible(ServerPlayerEntity player) throws java.io.IOException {
-        if (!GenerationControl.ready() || !GenerationControl.rules().config().rescueStarter || !GenerationControl.rules().restrictExisting()) return false;
+        if (!GenerationControl.ready() || !GenerationControl.rules().rescueStarter() || !GenerationControl.rules().restrictExisting()) return false;
         if (read(player.getUuid())!=null) return false;
         boolean ownsPokemon=false;
         var storage=Cobblemon.INSTANCE.getStorage();
@@ -103,16 +111,13 @@ public final class RescueService {
         receipt.snapshot=pokemon.saveToJSON(player.getRegistryManager(),new JsonObject());
         ConfigStore.write(receiptPath(player.getUuid()),receipt);
         if (!destination.add(pokemon)) throw new IllegalStateException("O resgate está reservado; tente novamente após liberar espaço.");
-        durableSave(destination,player);
-        receipt.state="delivered";
-        ConfigStore.write(receiptPath(player.getUuid()),receipt);
-        unlock(pokemon);
-        durableSave(destination,player);
-        return destination==party ? "Inicial entregue à equipe. Resgate único concluído." : "Inicial entregue ao PC. Troque um Pokémon da equipe pelo inicial para utilizá-lo.";
+        completeDelivery(destination, player, pokemon, receipt);
+        return destination==party ? "Inicial reservado na equipe. Aguardando confirmação da gravação."
+                : "Inicial reservado no PC. Aguardando confirmação da gravação.";
     }
 
     public static void recover(ServerPlayerEntity player) throws Exception {
-        if (!GenerationControl.ready()) return;
+        if (!GenerationControl.ready() || deliveries.containsKey(player.getUuid())) return;
         Receipt receipt=read(player.getUuid());
         if (receipt==null) return;
         if (receipt.pokemonId==null || receipt.snapshot==null) throw new IllegalStateException("Registro de resgate inválido; peça ao administrador para verificar o histórico.");
@@ -123,12 +128,8 @@ public final class RescueService {
         for (var store:stores) {
             Pokemon found=store.get(receipt.pokemonId);
             if (found==null) continue;
-            if (!"delivered".equals(receipt.state)) {
-                durableSave(store,player);
-                receipt.state="delivered";
-                ConfigStore.write(receiptPath(player.getUuid()),receipt);
-            }
-            if (pending(found)) { unlock(found); durableSave(store,player); }
+            if (!"delivered".equals(receipt.state) || pending(found))
+                completeDelivery(store, player, found, receipt);
             return;
         }
         if ("delivered".equals(receipt.state)) return; // traded or deliberately released: never grant again
@@ -138,11 +139,7 @@ public final class RescueService {
         var pc=storage.getPC(player);
         PokemonStore<?> destination=party.getFirstAvailablePosition()!=null ? party : pc;
         if (destination.getFirstAvailablePosition()==null || !destination.add(recovered)) throw new IllegalStateException("Libere espaço para concluir o resgate reservado.");
-        durableSave(destination,player);
-        receipt.state="delivered";
-        ConfigStore.write(receiptPath(player.getUuid()),receipt);
-        unlock(recovered);
-        durableSave(destination,player);
+        completeDelivery(destination, player, recovered, receipt);
     }
 
     private static void unlock(Pokemon pokemon) { pokemon.getPersistentData().remove(PENDING); pokemon.setTradeable(true); }
@@ -152,11 +149,61 @@ public final class RescueService {
         throw new IllegalStateException("O resgate requer o armazenamento padrão NBT/JSON do Cobblemon.");
     }
     @SuppressWarnings({"rawtypes","unchecked"})
-    private static void durableSave(PokemonStore<?> store,ServerPlayerEntity player) throws Exception {
+    private static void completeDelivery(PokemonStore<?> store, ServerPlayerEntity player, Pokemon pokemon,
+                                         Receipt receipt) throws Exception {
+        UUID playerId = player.getUuid();
+        if (deliveries.containsKey(playerId)) return;
+        if (deliveries.size() >= 64) throw new IllegalStateException("A fila de resgates está ocupada. Seu inicial está reservado; tente novamente.");
         var access=(StoreFactoryAccessor)(Object)provider(store);
         FileStoreAdapter adapter=access.generationControl$adapter();
         Object serialized=adapter.serialize(store,player.getRegistryManager());
-        access.generationControl$executor().submit(() -> adapter.save(store.getClass(),store.getUuid(),serialized)).get(10,TimeUnit.SECONDS);
+        var server = player.getServer();
+        var worldConfig = GenerationControl.store();
+        Path path = receiptPath(playerId);
+        Object operation = new Object();
+        deliveries.put(playerId, operation);
+        CompletableFuture<Void> saved = new CompletableFuture<>();
+        try {
+            access.generationControl$executor().execute(() -> {
+                try {
+                    adapter.save(store.getClass(), store.getUuid(), serialized);
+                    receipt.state = "delivered";
+                    ConfigStore.write(path, receipt);
+                    saved.complete(null);
+                } catch (Exception failure) { saved.completeExceptionally(failure); }
+            });
+        } catch (RuntimeException failure) {
+            deliveries.remove(playerId, operation);
+            throw failure;
+        }
+        saved.whenComplete((ignored, failure) -> server.execute(() -> {
+            if (!deliveries.remove(playerId, operation) || !GenerationControl.ready()
+                    || GenerationControl.store() != worldConfig) return;
+            var connected = server.getPlayerManager().getPlayer(playerId);
+            if (failure != null) {
+                GenerationControl.LOGGER.error("A confirmação do resgate de {} ficou pendente.", playerId, failure);
+                if (connected != null) connected.sendMessage(Text.literal("Seu resgate está reservado. Use /geracoes resgate para tentar concluir a gravação."));
+                return;
+            }
+            if (connected != player) {
+                if (connected != null) try { recover(connected); }
+                catch (Exception recoveryFailure) { GenerationControl.LOGGER.error("Falha ao retomar resgate de {}", playerId, recoveryFailure); }
+                return;
+            }
+            try {
+                var coordinates = pokemon.getStoreCoordinates().get();
+                if (coordinates == null) throw new IllegalStateException("O Pokémon reservado mudou de armazenamento.");
+                var currentStore = coordinates.getStore();
+                var factory = provider(currentStore);
+                unlock(pokemon);
+                factory.save(currentStore, player.getRegistryManager());
+                player.sendMessage(Text.literal("Gravação confirmada. Seu resgate único foi concluído."));
+            } catch (Exception unlockFailure) {
+                pokemon.getPersistentData().putBoolean(PENDING, true);
+                pokemon.setTradeable(false);
+                GenerationControl.LOGGER.error("Falha ao liberar resgate confirmado de {}", playerId, unlockFailure);
+            }
+        }));
     }
     private static void send(ServerPlayerEntity player,String message,List<String> choices) {
         if (!choices.isEmpty()) message += " Iniciais disponíveis: " + String.join(", ",choices) + ". Use /geracoes resgate <especie>.";

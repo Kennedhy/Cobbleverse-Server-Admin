@@ -18,6 +18,11 @@ public final class BreedingGuard {
     private static List<FormData> babies = List.of();
     private BreedingGuard() {}
 
+    public static synchronized void clearCache() {
+        cachedRules = null;
+        babies = List.of();
+    }
+
     public static boolean eggAllowed(ItemStack stack) {
         if (!GenerationControl.ready()) return true;
         try {

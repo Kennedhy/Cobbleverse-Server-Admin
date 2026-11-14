@@ -33,13 +33,19 @@ public final class GenerationControl implements DedicatedServerModInitializer {
         br.com.cobbleverse.generations.integration.ValidationService.register();
         CobblemonIntegration.register();
         ServerLifecycleEvents.END_DATA_PACK_RELOAD.register((server, resources, success) -> {
-            if (success) br.com.cobbleverse.generations.integration.TrialGuard.clear();
+            if (success) {
+                br.com.cobbleverse.generations.integration.TrialGuard.clear();
+                br.com.cobbleverse.generations.integration.RaidGuard.clearCache();
+                br.com.cobbleverse.generations.integration.BreedingGuard.clearCache();
+            }
         });
         br.com.cobbleverse.generations.integration.ExperienceManager.register();
+        br.com.cobbleverse.generations.integration.LegendaryLimitManager.register();
         br.com.cobbleverse.generations.integration.TrainerDifficultyManager.register();
         RctIntegration.register();
         br.com.cobbleverse.generations.integration.InvocationGuard.register();
         br.com.cobbleverse.generations.integration.RescueService.register();
+        br.com.cobbleverse.generations.web.market.MarketService.registerRecovery();
         WebPanelServer.registerPlayerSessions();
         ServerLifecycleEvents.SERVER_STARTING.register(starting -> {
             server=starting;
@@ -73,9 +79,29 @@ public final class GenerationControl implements DedicatedServerModInitializer {
             try {
                 if (store().pending() != null && store().pending().revision == rules().config().revision) store().activatePending("server-ready");
                 java.nio.file.Files.deleteIfExists(store().directory().resolve("startup-attempt.json"));
-                WebPanelServer.start(server);
             } catch (IOException e) { throw new IllegalStateException("Falha ao confirmar a revisão de gerações.", e); }
+            boolean marketReady = false;
+            try {
+                br.com.cobbleverse.generations.web.market.MarketService.initialize(server);
+                marketReady = true;
+            } catch (IOException marketFailure) {
+                LOGGER.error("O servidor iniciou, mas o GTS foi desativado. Os dados existentes foram preservados em {}.",
+                        store().directory().resolve("market/market.json"), marketFailure);
+            }
+            br.com.cobbleverse.generations.integration.LegendaryLimitManager.start(server, marketReady);
+            WebPanelServer.start(server);
         });
+        CommandRegistrationCallback.EVENT.register((dispatcher, access, environment) -> dispatcher.register(
+            CommandManager.literal("mercado").executes(ctx -> {
+                try {
+                    br.com.cobbleverse.generations.web.market.MarketPlayerGui.open(ctx.getSource().getPlayerOrThrow());
+                    return 1;
+                } catch (IllegalStateException unavailable) {
+                    ctx.getSource().sendError(Text.literal(unavailable.getMessage()));
+                    return 0;
+                }
+            })
+        ));
         CommandRegistrationCallback.EVENT.register((dispatcher, access, environment) -> dispatcher.register(
             CommandManager.literal("geracoes")
                 .then(CommandManager.literal("status").executes(ctx -> {
@@ -181,12 +207,16 @@ public final class GenerationControl implements DedicatedServerModInitializer {
                 }))
         ));
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+            br.com.cobbleverse.generations.integration.LegendaryLimitManager.stop(server);
+            br.com.cobbleverse.generations.web.market.MarketService.clear(server);
             WebPanelServer.stop();
             ConfigPersistenceExecutor.stop();
             synchronized (GenerationControl.class) { store = null; rules = null; gameplaySettings = null; gameplaySettingsRevision = 0; currentWorld = null; GenerationControl.server=null; }
             br.com.cobbleverse.generations.integration.ValidationService.clear();
             br.com.cobbleverse.generations.integration.CaptureManager.clear();
             br.com.cobbleverse.generations.integration.TrialGuard.clear();
+            br.com.cobbleverse.generations.integration.BreedingGuard.clearCache();
+            br.com.cobbleverse.generations.integration.RaidGuard.clearCache();
         });
         LOGGER.info("Generation Control inicializado. As regras são controladas pelo servidor.");
     }
@@ -256,8 +286,8 @@ public final class GenerationControl implements DedicatedServerModInitializer {
         GenerationConfig pending = current.pending();
         if (pending == null) throw new IllegalStateException("Não há revisão pendente para aplicar ao vivo.");
         pending.validated();
-        if (pending.captureMultiplier != 1.0 && !CobblemonIntegration.captureMultiplierCompatible())
-            throw new IllegalStateException("O multiplicador de captura exige o calculador padrão do Cobblemon; nenhum ajuste foi aplicado.");
+        if (!CobblemonIntegration.capturePolicyCompatible(pending))
+            throw new IllegalStateException("Captura e limites lendários exigem o calculador padrão do Cobblemon; nenhum ajuste foi aplicado.");
         gameplaySettings = GameplaySettings.from(pending);
         gameplaySettingsRevision = pending.revision;
     }

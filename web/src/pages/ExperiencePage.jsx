@@ -86,7 +86,7 @@ function PlayerEditor({ draft, update, state }) {
     try {
       const params = new URLSearchParams({ q: term });
       if (cursor) params.set('cursor', cursor);
-      const result = await request(`/api/pc/players?${params}`);
+      const result = await request(`/api/pc/players?${params}`, { retryBusy: true });
       if (sequence !== lookupSequence.current) return;
       setWorldLookup({ term, players: result.players, nextCursor: result.nextCursor || null });
     } catch (error) {
@@ -120,7 +120,7 @@ function PlayerEditor({ draft, update, state }) {
   const rows = useMemo(() => {
     const index = new Map();
     const worldPlayers = worldLookup.term === query.trim() ? worldLookup.players : [];
-    for (const player of [...(state?.knownPlayers || []), ...(state?.onlinePlayers || []), ...worldPlayers]) index.set(player.uuid, player);
+    for (const player of [...(state?.knownPlayers || []), ...worldPlayers]) index.set(player.uuid, player);
     for (const uuid of [...Object.keys(draft.playerXpGroups || {}), ...Object.keys(draft.playerXpMultipliers || {})]) {
       if (!index.has(uuid)) index.set(uuid, { uuid, name: uuid, online: false });
     }
@@ -203,7 +203,7 @@ export default function ExperiencePage({ draft, update, state, canEdit }) {
   const [form, setForm] = useState('normal');
   const [baseXp, setBaseXp] = useState(100);
   const [remainingXp, setRemainingXp] = useState(1000);
-  const players = state?.knownPlayers || state?.onlinePlayers || [];
+  const players = state?.knownPlayers || [];
   const simulate = async (event) => {
     event.preventDefault();
     setSimulationError(''); setSimulationBusy(true); setSimulation(null);

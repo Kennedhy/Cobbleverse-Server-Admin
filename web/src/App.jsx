@@ -11,10 +11,12 @@ import CapturePage from './pages/CapturePage.jsx';
 import ExperiencePage from './pages/ExperiencePage.jsx';
 import GenerationPage from './pages/GenerationPage.jsx';
 import HistoryPage from './pages/HistoryPage.jsx';
+import MarketPage from './pages/MarketPage.jsx';
 import OverviewPage from './pages/OverviewPage.jsx';
 import PlayerPcPage from './pages/PlayerPcPage.jsx';
 import RulesPage from './pages/RulesPage.jsx';
 import TrainerPage from './pages/TrainerPage.jsx';
+import WildCombatPage from './pages/WildCombatPage.jsx';
 import WorldPage from './pages/WorldPage.jsx';
 
 const pages = {
@@ -26,6 +28,8 @@ const pages = {
   trainers: ['Treinadores', TrainerPage],
   pc: ['PC dos jogadores', PlayerPcPage],
   history: ['Histórico', HistoryPage],
+  market: ['Mercado Pokémon', MarketPage],
+  wildCombat: ['Pokémon selvagens', WildCombatPage],
   world: ['Mundo', WorldPage],
 };
 
@@ -107,8 +111,8 @@ export default function App() {
     setValidated(null);
     setDockMessage(next.pending
       ? next.pendingGameplaySettingsDiffer
-        ? `XP, limites, captura e shiny da revisão ${next.pending.revision} ainda não estão aplicados ao vivo.`
-        : 'XP, limites, captura e shiny já correspondem ao servidor; as demais regras aguardam reinício.'
+        ? `XP, níveis, captura, shiny e limites lendários da revisão ${next.pending.revision} ainda não estão aplicados ao vivo.`
+        : 'XP, níveis, captura, shiny e limites lendários já correspondem ao servidor; as demais regras aguardam reinício.'
       : '');
   }, []);
 
@@ -207,7 +211,9 @@ export default function App() {
       ['Multiplicador global de XP', draft.globalXpMultiplier, 0, 100],
       ['Limite global de nível', draft.globalLevelCap, 1, 100],
       ['Multiplicador de captura', draft.captureMultiplier, 0, 100],
+      ['Multiplicador de captura lendária', draft.legendaryCaptureMultiplier ?? 1, 0, 100],
       ...(draft.shinyRate == null ? [] : [['Taxa shiny', draft.shinyRate, 1, 1000000]]),
+      ...Object.entries(draft.legendaryLimits || {}).map(([key, value]) => [`Limite lendário ${key}`, value, -1, 1000]),
       ...Object.entries(draft.groupXpMultipliers || {}).map(([name, value]) => [`Grupo ${name}`, value, 0, 100]),
       ...Object.entries(draft.playerXpMultipliers || {}).map(([uuid, value]) => [`XP individual ${uuid}`, value, 0, 100]),
     ];
@@ -219,6 +225,14 @@ export default function App() {
     }
     if (draft.shinyRate != null && !Number.isInteger(Number(draft.shinyRate))) {
       setToast({ tone: 'error', message: 'A taxa shiny precisa ser um número inteiro.' });
+      return;
+    }
+    const invalidLegendaryLimit = Object.entries(draft.legendaryLimits || {}).find(([, value]) => {
+      const limit = Number(value);
+      return !Number.isInteger(limit) || limit === 0;
+    });
+    if (invalidLegendaryLimit) {
+      setToast({ tone: 'error', message: `O limite lendário ${invalidLegendaryLimit[0]} precisa ser um inteiro de 1 a 1.000 ou -1 para vários.` });
       return;
     }
     const submitted = copy(draft);
@@ -266,15 +280,15 @@ export default function App() {
   const applyLiveSettings = async () => {
     if (dirty || !state?.pending || !state.pendingGameplaySettingsDiffer) return;
     const revision = state.pending.revision;
-    if (!window.confirm(`Aplicar agora XP, limites de nível, captura e shiny da revisão ${revision}? Gerações, ginásios e regras do mundo continuarão aguardando o reinício.`)) return;
+    if (!window.confirm(`Aplicar agora XP, limites de nível, captura, shiny e limites lendários da revisão ${revision}? Gerações, ginásios e regras do mundo continuarão aguardando o reinício.`)) return;
     setWorking('applyLiveSettings');
     try {
       const next = await request('/api/action', { method: 'POST', body: {
         action: 'applyLiveSettings', expectedRevision: baseRevision,
       } });
       setState(next);
-      setDockMessage(`XP, limites, captura e shiny da revisão ${revision} foram aplicados ao vivo. As demais regras continuam pendentes até reiniciar.`);
-      setToast({ tone: 'success', message: `XP, limites, captura e shiny da revisão ${revision} estão ativos.` });
+      setDockMessage(`XP, níveis, captura, shiny e limites lendários da revisão ${revision} foram aplicados ao vivo. As demais regras continuam pendentes até reiniciar.`);
+      setToast({ tone: 'success', message: `XP, captura, shiny e limites lendários da revisão ${revision} estão ativos.` });
     } catch (failure) {
       setDockMessage(failure.message); setToast({ tone: 'error', message: failure.message });
       if (failure.status === 401) { setAuth(false); setAuthError('Sua sessão expirou. Entre novamente.'); }
@@ -341,19 +355,19 @@ export default function App() {
     </header>
     <Sidebar page={page} onPage={changePage} open={mobileNav} onClose={() => setMobileNav(false)} />
     <div className="main-column">
-      <main className={`workspace${page === 'overview' ? ' workspace-overview' : ''}`} inert={!canEdit && !['overview', 'pc', 'history', 'experience', 'trainers'].includes(page)}>
+      <main className={`workspace${page === 'overview' ? ' workspace-overview' : ''}`} inert={!canEdit && !['overview', 'pc', 'history', 'experience', 'capture', 'trainers', 'market', 'wildCombat'].includes(page)}>
         {page !== 'overview' && working === 'refresh' && <div className="connection-banner"><Loading>Atualizando estado do servidor…</Loading></div>}
-        {page !== 'overview' && page !== 'trainers' && dirty && <div className="workspace-head"><span className="draft-marker">Rascunho não salvo · {pageTitle}</span></div>}
+        {page !== 'overview' && page !== 'trainers' && page !== 'wildCombat' && dirty && <div className="workspace-head"><span className="draft-marker">Rascunho não salvo · {pageTitle}</span></div>}
         <Page draft={draft} update={update} state={state} onRefresh={refresh} busy={Boolean(working)}
           canEdit={canEdit}
           onSearch={() => setSpeciesOpen(true)} onPage={changePage}
           initialPlayer={pcPlayer} onNotice={setToast} dirty={dirty}
           onRestore={() => recoveryAction('restore')} onDiscard={() => recoveryAction('discard')}
           onRestoreRevision={(revision) => recoveryAction('restoreRevision', revision)} />
-        {canEdit && page !== 'overview' && page !== 'trainers' && state.job?.action === 'validate' && (
+        {canEdit && page !== 'overview' && page !== 'trainers' && page !== 'wildCombat' && state.job?.action === 'validate' && (
           <ValidationResult job={state.job} onCancel={cancelValidation} />
         )}
-        {canEdit && page !== 'overview' && page !== 'trainers' && <ActionBar onRefresh={refresh} onValidate={validate} onSave={save} dirty={dirty}
+        {canEdit && page !== 'overview' && page !== 'trainers' && page !== 'wildCombat' && <ActionBar onRefresh={refresh} onValidate={validate} onSave={save} dirty={dirty}
           onApplyLive={applyLiveSettings} applyLiveAvailable={state.pendingGameplaySettingsDiffer}
           liveGameplayRevision={state.liveGameplayRevision}
           validated={signatureMatches} working={Boolean(working)} pending={pending} message={dockMessage} />}
