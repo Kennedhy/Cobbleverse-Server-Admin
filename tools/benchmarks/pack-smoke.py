@@ -22,18 +22,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from prepare_server_mods import prepare_server_mods
 
 
-PACK = "https://cdn.modrinth.com/data/Jkb29YJU/versions/4SKGla61/COBBLEVERSE%201.7.42.mrpack"
+PACK = "https://cdn.modrinth.com/data/Jkb29YJU/versions/DxzQzMLR/COBBLEVERSE%201.8.0.mrpack"
 PACK_SHA512 = (
-    "9af64e0d3a092ab8d72d966cc4d45512e8d875685e804bea9233adb88f5f5d4c305"
-    "78b77304f70fe77e9ef2ee01e487d652f3341279bcc1850ff2587ae8aa8a4"
+    "58a20698e4ba50b827b4aff35cc33d8b78bd5fb32c29fe86fc5cf510294215bdee"
+    "084e7bc1b0963450ca9346cf1b1ca5c050222b2641577a398ca3b46a15f97c"
 )
-FABRIC = "https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.18.4/1.1.0/server/jar"
+FABRIC = "https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.19.5/1.1.0/server/jar"
 GAME_PORT = int(os.environ.get("COBBLEVERSE_SMOKE_GAME_PORT", "25585"))
 PANEL_PORT = int(os.environ.get("COBBLEVERSE_SMOKE_PANEL_PORT", "8765"))
 if not 1024 <= GAME_PORT <= 65535 or not 1024 <= PANEL_PORT <= 65535 or GAME_PORT == PANEL_PORT:
     raise ValueError("Smoke server ports must be distinct values from 1024 to 65535")
 GAME_ADDRESS = f"127.0.0.1:{GAME_PORT}"
 PANEL_ADDRESS = f"http://127.0.0.1:{PANEL_PORT}"
+PANEL_READY_MARKER = f"Painel web ouvindo em 0.0.0.0:{PANEL_PORT}"
 PLAYER = "CobbleSmoke"
 SIMULATION_PLAYER_UUID = "3d0bbb38-80e3-3a3d-9a13-84995b87f05a"
 
@@ -77,7 +78,7 @@ def install_pack(root, server, client):
     with zipfile.ZipFile(archive) as bundle:
         index_bytes = bundle.read("modrinth.index.json")
         index = json.loads(index_bytes)
-        if index["dependencies"] != {"minecraft": "1.21.1", "fabric-loader": "0.18.4"}:
+        if index["dependencies"] != {"minecraft": "1.21.1", "fabric-loader": "0.19.5"}:
             raise ValueError("Unexpected pack dependency versions")
         index_path = root / "modrinth.index.json"
         index_path.write_bytes(index_bytes)
@@ -238,16 +239,16 @@ def client_command(installed, client, username, memory="4G", player_uuid=None):
 
 def api(opener, path, **params):
     url = PANEL_ADDRESS + "/api/pc/" + path + "?" + urllib.parse.urlencode(params)
-    for attempt in range(3):
+    for attempt in range(6):
         try:
             with opener.open(url, timeout=10) as response:
                 return json.load(response)
         except urllib.error.HTTPError as failure:
             detail = failure.read().decode("utf-8", errors="replace")
             failure.close()
-            if failure.code != 503 or attempt == 2:
+            if failure.code != 503 or attempt == 5:
                 raise RuntimeError(f"PC API {path} returned HTTP {failure.code}: {detail}") from failure
-            print(f"PC API {path} is temporarily unavailable; retrying ({attempt + 1}/2).")
+            print(f"PC API {path} is temporarily unavailable; retrying ({attempt + 1}/5).")
             time.sleep(attempt + 1)
 
 
@@ -255,12 +256,17 @@ def panel_request(opener, path, payload=None):
     data = None if payload is None else json.dumps(payload).encode()
     headers = {} if payload is None else {"Content-Type": "application/json", "Origin": PANEL_ADDRESS}
     request = urllib.request.Request(PANEL_ADDRESS + path, data=data, headers=headers)
-    for attempt in range(2):
+    for attempt in range(6):
         try:
             with opener.open(request, timeout=10) as response:
                 return json.load(response)
         except urllib.error.HTTPError as failure:
-            if failure.code != 429 or attempt > 0:
+            if failure.code == 503 and payload is None and attempt < 5:
+                failure.close()
+                print(f"Panel GET {path} is temporarily unavailable; retrying ({attempt + 1}/5).")
+                time.sleep(attempt + 1)
+                continue
+            if failure.code != 429 or attempt > 0 or payload is None:
                 raise
             body = json.load(failure)
             failure.close()
@@ -364,9 +370,8 @@ def validation_smoke(opener, dedicated):
     # Keep one loaded PC large enough for a deterministic store mutation while it is scanned.
     dedicated.stdin.write((f"givepokemonother {PLAYER} bulbasaur\n" * 240).encode())
     dedicated.stdin.flush()
-    time.sleep(1)
-    with opener.open(PANEL_ADDRESS + "/api/state", timeout=8) as response:
-        state = json.load(response)
+    time.sleep(3)
+    state = panel_request(opener, "/api/state")
     candidate = state["active"]
     candidate["restrictExistingPokemon"] = not candidate["restrictExistingPokemon"]
     payload = {
@@ -387,8 +392,7 @@ def validation_smoke(opener, dedicated):
     mutation_sent = False
     store_recheck_seen = False
     while time.monotonic() < deadline:
-        with opener.open(PANEL_ADDRESS + "/api/job", timeout=8) as response:
-            job = json.load(response)["job"]
+        job = panel_request(opener, "/api/job")["job"]
         if job is None:
             raise RuntimeError("Panel lost the player-storage validation job")
         phase = (job.get("progress") or {}).get("phase")
@@ -411,7 +415,7 @@ def validation_smoke(opener, dedicated):
                 f"the changed store ({report['inspectedPlayers']} player(s))."
             )
             return
-        time.sleep(0.1)
+        time.sleep(0.5)
     raise RuntimeError("Player-storage validation did not finish within 240 seconds")
 
 
@@ -476,7 +480,7 @@ def saved_pc_smoke(root, server, player_id, version):
     with server_log.open("wb") as output:
         dedicated = start_server(server, output)
         try:
-            wait_for(dedicated, server_log, "Painel web local:", 300)
+            wait_for(dedicated, server_log, PANEL_READY_MARKER, 300)
             opener = panel_smoke(server, version)
             matches = api(opener, "players", q=player_id)["players"]
             if not any(entry["uuid"] == player_id and not entry["online"] for entry in matches):
@@ -525,7 +529,7 @@ def connected_verification_smoke(root, server, client, installed, mode, username
     with server_log.open("wb") as output:
         dedicated = start_server(server, output, memory="2G", verification=mode)
         try:
-            wait_for(dedicated, server_log, "Painel web local:", 360)
+            wait_for(dedicated, server_log, PANEL_READY_MARKER, 360)
             for username, game_dir in zip(usernames, client_dirs):
                 log_path = root / f"{mode}-{username}-client.log"
                 with log_path.open("wb") as log:
@@ -592,7 +596,7 @@ def runtime_policy_smoke(root, server):
     with server_log.open("wb") as output:
         dedicated = start_server(server, output, memory="3G", verification="runtime-policy")
         try:
-            wait_for(dedicated, server_log, "Painel web local:", 360)
+            wait_for(dedicated, server_log, PANEL_READY_MARKER, 360)
             deadline = time.monotonic() + 300
             while time.monotonic() < deadline and not result_path.is_file():
                 if dedicated.poll() is not None:
@@ -665,7 +669,7 @@ def run(root):
         iris.write_text("\n".join([*lines, "enableShaders=false", ""]))
 
     loader = mod_loader.get_mod_loader("fabric")
-    installed = loader.install("1.21.1", client, loader_version="0.18.4")
+    installed = loader.install("1.21.1", client, loader_version="0.19.5")
     args = client_command(
         installed, client, PLAYER, memory="3G", player_uuid="3d0bbb3880e33a3d9a1384995b87f05a"
     )
@@ -674,7 +678,7 @@ def run(root):
     with server_log.open("wb") as output:
         dedicated = start_server(server, output)
         try:
-            wait_for(dedicated, server_log, "Painel web local:", 300)
+            wait_for(dedicated, server_log, PANEL_READY_MARKER, 300)
             opener = panel_smoke(server, version)
             if version >= (0, 4, 8):
                 policy_simulation_smoke(opener)
@@ -684,6 +688,9 @@ def run(root):
                     wait_for(player, server_log, PLAYER + " joined the game", 330)
                     print("Fabric client without the manager joined the dedicated server.")
                     if version >= (0, 4, 8):
+                        # Cobblemon's join callbacks can keep the game thread busy briefly;
+                        # let PC initialization finish before submitting a bounded PC lookup.
+                        time.sleep(20)
                         checked_pc = live_pc_smoke(opener, dedicated)
                         validation_smoke(opener, dedicated)
                         live_settings_smoke(opener)

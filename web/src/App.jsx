@@ -16,7 +16,6 @@ import OverviewPage from './pages/OverviewPage.jsx';
 import PlayerPcPage from './pages/PlayerPcPage.jsx';
 import RulesPage from './pages/RulesPage.jsx';
 import TrainerPage from './pages/TrainerPage.jsx';
-import WildCombatPage from './pages/WildCombatPage.jsx';
 import WorldPage from './pages/WorldPage.jsx';
 
 const pages = {
@@ -29,7 +28,6 @@ const pages = {
   pc: ['PC dos jogadores', PlayerPcPage],
   history: ['Histórico', HistoryPage],
   market: ['Mercado Pokémon', MarketPage],
-  wildCombat: ['Pokémon selvagens', WildCombatPage],
   world: ['Mundo', WorldPage],
 };
 
@@ -355,19 +353,19 @@ export default function App() {
     </header>
     <Sidebar page={page} onPage={changePage} open={mobileNav} onClose={() => setMobileNav(false)} />
     <div className="main-column">
-      <main className={`workspace${page === 'overview' ? ' workspace-overview' : ''}`} inert={!canEdit && !['overview', 'pc', 'history', 'experience', 'capture', 'trainers', 'market', 'wildCombat'].includes(page)}>
+      <main className={`workspace${page === 'overview' ? ' workspace-overview' : ''}`} inert={!canEdit && !['overview', 'pc', 'history', 'experience', 'capture', 'trainers', 'market'].includes(page)}>
         {page !== 'overview' && working === 'refresh' && <div className="connection-banner"><Loading>Atualizando estado do servidor…</Loading></div>}
-        {page !== 'overview' && page !== 'trainers' && page !== 'wildCombat' && dirty && <div className="workspace-head"><span className="draft-marker">Rascunho não salvo · {pageTitle}</span></div>}
+        {page !== 'overview' && page !== 'trainers' && dirty && <div className="workspace-head"><span className="draft-marker">Rascunho não salvo · {pageTitle}</span></div>}
         <Page draft={draft} update={update} state={state} onRefresh={refresh} busy={Boolean(working)}
           canEdit={canEdit}
           onSearch={() => setSpeciesOpen(true)} onPage={changePage}
           initialPlayer={pcPlayer} onNotice={setToast} dirty={dirty}
           onRestore={() => recoveryAction('restore')} onDiscard={() => recoveryAction('discard')}
           onRestoreRevision={(revision) => recoveryAction('restoreRevision', revision)} />
-        {canEdit && page !== 'overview' && page !== 'trainers' && page !== 'wildCombat' && state.job?.action === 'validate' && (
+        {canEdit && page !== 'overview' && page !== 'trainers' && state.job?.action === 'validate' && (
           <ValidationResult job={state.job} onCancel={cancelValidation} />
         )}
-        {canEdit && page !== 'overview' && page !== 'trainers' && page !== 'wildCombat' && <ActionBar onRefresh={refresh} onValidate={validate} onSave={save} dirty={dirty}
+        {canEdit && page !== 'overview' && page !== 'trainers' && <ActionBar onRefresh={refresh} onValidate={validate} onSave={save} dirty={dirty}
           onApplyLive={applyLiveSettings} applyLiveAvailable={state.pendingGameplaySettingsDiffer}
           liveGameplayRevision={state.liveGameplayRevision}
           validated={signatureMatches} working={Boolean(working)} pending={pending} message={dockMessage} />}

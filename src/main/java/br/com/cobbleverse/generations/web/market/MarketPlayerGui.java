@@ -2,18 +2,29 @@ package br.com.cobbleverse.generations.web.market;
 
 import br.com.cobbleverse.generations.config.ConfigStore;
 import br.com.cobbleverse.generations.integration.PcInspection;
+import com.cobblemon.mod.common.api.moves.Move;
+import com.cobblemon.mod.common.api.pokemon.stats.Stats;
+import com.cobblemon.mod.common.item.PokemonItem;
+import com.cobblemon.mod.common.pokemon.Pokemon;
+import com.cobblemon.mod.common.pokemon.PokemonStats;
+import com.cobblemon.mod.common.util.LocalizationUtilsKt;
 import eu.pb4.sgui.api.elements.GuiElement;
 import eu.pb4.sgui.api.elements.GuiElementBuilder;
 import eu.pb4.sgui.api.gui.AnvilInputGui;
 import eu.pb4.sgui.api.gui.SimpleGui;
 import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.screen.ScreenHandlerType;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /** Player-facing, server-authoritative screens for the Cobbleverse market. */
@@ -65,7 +76,7 @@ public final class MarketPlayerGui {
         }
         for (int index = 0; index < listings.size() && index < PAGE_ITEMS; index++) {
             MarketListing listing = listings.get(index);
-            gui.setSlot(index, listingElement(listing, () -> showListing(player, listing.id, page), false));
+            gui.setSlot(index, listingElement(player, listing, () -> showListing(player, listing.id, page), false));
         }
         gui.setSlot(45, element(Items.ARROW, "Voltar ao mercado", List.of(), () -> showHome(player, "")));
         if (page > 0) gui.setSlot(48, element(Items.SPECTRAL_ARROW, "Página anterior", List.of(), () -> showBrowse(player, page - 1)));
@@ -83,7 +94,7 @@ public final class MarketPlayerGui {
         }
         SimpleGui gui = menu(player, "Detalhes do anúncio");
         fill(gui);
-        gui.setSlot(22, listingElement(listing, null, true));
+        gui.setSlot(22, listingElement(player, listing, null, true));
         if ("auction".equals(listing.mode)) {
             long minimumBid = minimumBid(listing);
             String bidLabel = listing.highestBid > 0
@@ -106,9 +117,11 @@ public final class MarketPlayerGui {
         SimpleGui gui = menu(player, "Selecione um Pokémon do PC");
         fill(gui);
         PcInspection.Box box;
+        Map<Integer, Pokemon> boxPokemon;
         try {
-            PcInspection.Lookup lookup = PcInspection.lookup(player.getUuid(), boxIndex);
-            box = lookup.live();
+            PcInspection.LiveBox lookup = PcInspection.lookupLiveBox(player.getUuid(), boxIndex);
+            box = lookup.box();
+            boxPokemon = lookup.pokemon();
         } catch (RuntimeException failure) {
             showHome(player, "Não foi possível acessar o PC agora.");
             return;
@@ -118,9 +131,16 @@ public final class MarketPlayerGui {
         } else {
             for (PcInspection.Slot slot : box.slots()) {
                 int position = slot.position();
-                gui.setSlot(position, element(slot.shiny() ? Items.NETHER_STAR : Items.SNOWBALL,
-                        slot.nickname().isBlank() ? speciesLabel(slot.species()) : slot.nickname(),
-                        pokemonLore(slot), () -> chooseMode(player, box.index(), position, slot.pokemonUuid(), null, true)));
+                Pokemon pokemon = boxPokemon.get(position);
+                List<String> lore = new ArrayList<>(pokemon == null ? pokemonLore(slot) : pokemonLore(pokemon));
+                lore.add("Clique para anunciar");
+                Runnable choose = () -> chooseMode(player, box.index(), position, slot.pokemonUuid(), null, true);
+                if (pokemon != null) {
+                    gui.setSlot(position, pokemonElement(pokemon, lore, choose));
+                } else {
+                    String title = speciesLabel(slot.species()) + (slot.shiny() ? " ★" : "");
+                    gui.setSlot(position, element(slot.shiny() ? Items.NETHER_STAR : Items.SNOWBALL, title, lore, choose));
+                }
             }
             if (box.index() > 0) gui.setSlot(45, element(Items.SPECTRAL_ARROW, "Caixa anterior", List.of(), () -> showBoxes(player, box.index() - 1)));
             if (box.index() + 1 < box.boxCount()) gui.setSlot(48, element(Items.SPECTRAL_ARROW, "Próxima caixa", List.of(), () -> showBoxes(player, box.index() + 1)));
@@ -197,7 +217,7 @@ public final class MarketPlayerGui {
         }
         for (int index = 0; index < listings.size() && index < PAGE_ITEMS; index++) {
             MarketListing listing = listings.get(index);
-            gui.setSlot(index, listingElement(listing, () -> {
+            gui.setSlot(index, listingElement(player, listing, () -> {
                 if ("active".equals(listing.status) && "auction".equals(listing.mode) && listing.highestBid > 0)
                     tell(player, "Este leilão já recebeu lance e não pode ser cancelado.");
                 else if ("active".equals(listing.status)) confirm(player, "Cancelar anúncio", "Devolver este anúncio?", () -> run(player,
@@ -287,8 +307,11 @@ public final class MarketPlayerGui {
         void run() throws Exception;
     }
 
-    private static GuiElement listingElement(MarketListing listing, Runnable click, boolean details) {
-        Item icon = "item".equals(listing.type) ? Items.CHEST : Items.SNOWBALL;
+    private static GuiElement listingElement(ServerPlayerEntity player, MarketListing listing, Runnable click, boolean details) {
+        boolean pokemonListing = "pokemon".equals(listing.type);
+        Pokemon pokemon = pokemonListing ? restoreListingPokemon(player, listing) : null;
+        Item icon = "item".equals(listing.type) ? Items.CHEST
+                : listing.pokemonDetails != null && listing.pokemonDetails.shiny() ? Items.NETHER_STAR : Items.SNOWBALL;
         boolean auction = "auction".equals(listing.mode);
         boolean hasBid = listing.highestBid > 0;
         long amount = auction && hasBid ? listing.highestBid : listing.price;
@@ -297,10 +320,22 @@ public final class MarketPlayerGui {
         lore.add("Vendedor: " + safe(listing.sellerName));
         if (!auction) lore.add("Preço: " + price);
         else lore.add((hasBid ? "Maior lance: " : "Lance inicial: ") + price);
-        if (details) lore.addAll(listingSummary(listing));
+        if (pokemonListing) lore.addAll(pokemon == null ? listingSummary(listing) : pokemonLore(pokemon));
+        else if (details) lore.addAll(listingSummary(listing));
         if (listing.highestBid > 0) lore.add("Leilão com lance: não pode ser cancelado pelo vendedor.");
         if (listing.expiresAt > 0) lore.add("Encerra: " + new java.text.SimpleDateFormat("dd/MM HH:mm").format(listing.expiresAt));
+        if (pokemon != null) return pokemonElement(pokemon, lore, click);
         return element(icon, safe(listing.assetName), lore, click);
+    }
+
+    private static Pokemon restoreListingPokemon(ServerPlayerEntity player, MarketListing listing) {
+        if (listing.assetJson == null || listing.assetJson.isBlank()) return null;
+        try {
+            MarketPokemonSnapshot snapshot = ConfigStore.GSON.fromJson(listing.assetJson, MarketPokemonSnapshot.class);
+            return snapshot == null ? null : snapshot.restore(player.getRegistryManager());
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     private static List<String> listingSummary(MarketListing listing) {
@@ -329,10 +364,89 @@ public final class MarketPlayerGui {
     }
 
     private static List<String> pokemonLore(PcInspection.Slot pokemon) {
-        return List.of("Espécie: " + speciesLabel(pokemon.species()),
-                "Nv. " + pokemon.level() + (pokemon.shiny() ? " · Shiny" : ""),
-                "Forma: " + pokemon.form() + " · Natureza: " + pokemon.nature(),
-                "IVs: " + pokemon.ivs(), "EVs: " + pokemon.evs(), "Clique para anunciar");
+        List<String> lore = new ArrayList<>();
+        lore.add("Nível: " + pokemon.level() + (pokemon.shiny() ? " · Shiny" : ""));
+        if (!pokemon.nickname().isBlank()) lore.add("Apelido: " + pokemon.nickname());
+        lore.add("Natureza: " + safe(pokemon.nature()));
+        if (!pokemon.ability().isBlank()) lore.add("Habilidade: " + pokemon.ability());
+        if (!pokemon.form().isBlank()) lore.add("Forma: " + pokemon.form());
+        lore.add("IVs: " + pokemon.ivs());
+        lore.add("EVs: " + pokemon.evs());
+        if (!pokemon.moves().isEmpty()) lore.add("Golpes: " + String.join(", ", pokemon.moves()));
+        return lore;
+    }
+
+    private static List<String> pokemonLore(Pokemon pokemon) {
+        List<String> lore = new ArrayList<>();
+        lore.add("Nível: " + pokemon.getLevel() + (pokemon.getShiny() ? " · Shiny" : ""));
+        if (pokemon.getNickname() != null && !pokemon.getNickname().getString().isBlank())
+            lore.add("Apelido: " + pokemon.getNickname().getString());
+
+        String ball = caughtBallName(pokemon);
+        if (!ball.isBlank()) lore.add("Pokébola: " + ball);
+
+        if (pokemon.getNature() != null)
+            lore.add("Natureza: " + localizedCobblemonName(pokemon.getNature().getDisplayName()));
+        if (pokemon.getAbility() != null)
+            lore.add("Habilidade: " + localizedCobblemonName(pokemon.getAbility().getDisplayName()));
+        if (pokemon.getForm() != null && !pokemon.getForm().getName().isBlank())
+            lore.add("Forma: " + pokemon.getForm().getName());
+        lore.add("Tamanho: " + String.format(Locale.ROOT, "%.2f", pokemon.getScaleModifier()));
+
+        addStatLines(lore, "IVs", pokemon.getIvs());
+        addStatLines(lore, "EVs", pokemon.getEvs());
+
+        List<String> moves = new ArrayList<>(4);
+        for (Move move : pokemon.getMoveSet().getMoves()) {
+            if (move == null) continue;
+            String name = move.getDisplayName().getString();
+            if (!name.isBlank() && moves.size() < 4) moves.add(name);
+        }
+        if (!moves.isEmpty()) {
+            lore.add("Golpes:");
+            for (String move : moves) lore.add("  · " + move);
+        }
+        return lore;
+    }
+
+    private static void addStatLines(List<String> lore, String label, PokemonStats stats) {
+        lore.add(label + ": HP " + stats.getOrDefault(Stats.HP)
+                + " · Atq " + stats.getOrDefault(Stats.ATTACK)
+                + " · Def " + stats.getOrDefault(Stats.DEFENCE));
+        lore.add("  Atq. Esp. " + stats.getOrDefault(Stats.SPECIAL_ATTACK)
+                + " · Def. Esp. " + stats.getOrDefault(Stats.SPECIAL_DEFENCE)
+                + " · Vel " + stats.getOrDefault(Stats.SPEED));
+    }
+
+    private static String caughtBallName(Pokemon pokemon) {
+        try {
+            if (pokemon.getCaughtBall() == null || pokemon.getCaughtBall().item() == null) return "";
+            return new ItemStack(pokemon.getCaughtBall().item()).getName().getString();
+        } catch (RuntimeException ignored) {
+            return "";
+        }
+    }
+
+    private static String localizedCobblemonName(String name) {
+        if (name == null || name.isBlank()) return "—";
+        return LocalizationUtilsKt.lang(name.replace("cobblemon.", "")).getString();
+    }
+
+    private static GuiElement pokemonElement(Pokemon pokemon, List<String> lore, Runnable click) {
+        GuiElementBuilder builder;
+        try {
+            builder = new GuiElementBuilder(PokemonItem.from(pokemon, 1)).hideDefaultTooltip();
+        } catch (RuntimeException unavailableIcon) {
+            builder = new GuiElementBuilder(pokemon.getShiny() ? Items.NETHER_STAR : Items.SNOWBALL);
+        }
+        builder.setName(pokemonTitle(pokemon));
+        return element(builder, lore, click);
+    }
+
+    private static Text pokemonTitle(Pokemon pokemon) {
+        MutableText title = pokemon.getSpecies().getTranslatedName().copy().formatted(Formatting.GRAY);
+        if (pokemon.getShiny()) title.append(Text.literal(" ★").formatted(Formatting.GOLD));
+        return title;
     }
 
     private static long minimumBid(MarketListing listing) {
@@ -363,9 +477,13 @@ public final class MarketPlayerGui {
     }
 
     private static GuiElement element(Item item, String title, List<String> lore, Runnable action) {
+        return element(new GuiElementBuilder(item).setName(Text.literal(title)), lore, action);
+    }
+
+    private static GuiElement element(GuiElementBuilder builder, List<String> lore, Runnable action) {
         List<Text> lines = new ArrayList<>();
         lore.stream().filter(line -> line != null && !line.isBlank()).forEach(line -> lines.add(Text.literal(line)));
-        GuiElementBuilder builder = new GuiElementBuilder(item).setName(Text.literal(title)).setLore(lines);
+        builder.setLore(lines);
         if (action != null) builder.setCallback((index, type, click, gui) -> action.run());
         return builder.build();
     }

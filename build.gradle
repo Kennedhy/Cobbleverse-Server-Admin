@@ -23,11 +23,11 @@ repositories {
 }
 
 dependencies {
-    def fabricApiVersion = '0.116.14+1.21.1'
+    def fabricApiVersion = '0.116.18+1.21.1'
 
     minecraft 'com.mojang:minecraft:1.21.1'
     mappings 'net.fabricmc:yarn:1.21.1+build.3:v2'
-    modImplementation 'net.fabricmc:fabric-loader:0.18.4'
+    modImplementation 'net.fabricmc:fabric-loader:0.19.5'
     // Compile only against the API modules used by source instead of remapping
     // the full aggregate (which contains unrelated modules and duplicate classes).
     modImplementation fabricApi.module('fabric-command-api-v2', fabricApiVersion)
@@ -38,9 +38,9 @@ dependencies {
     // letting the development server load a newer reflection/runtime pair.
     modImplementation 'net.fabricmc:fabric-language-kotlin:1.13.6+kotlin.2.2.20'
     // Immutable Modrinth version IDs keep builds independent from a local modpack.
-    modImplementation 'maven.modrinth:cobblemon:kF7CvxTo'
-    modImplementation 'maven.modrinth:rctapi:9OZx0coL'
-    modImplementation 'maven.modrinth:rctmod:gQx1F1dx'
+    modImplementation 'maven.modrinth:cobblemon:PdOzYHKU'
+    modImplementation 'maven.modrinth:rctapi:DoQNDXAU'
+    modImplementation 'maven.modrinth:rctmod:rgfBfnW9'
     // Server-side inventory screens for player market navigation.
     modImplementation include('eu.pb4:sgui:1.6.1+1.21.1')
     modRuntimeOnly 'maven.modrinth:forge-config-api-port:N5qzq0XV'
@@ -141,6 +141,12 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 java { withSourcesJar() }
+// The sources archive must not carry the generated browser panel, but Gradle
+// still tracks the generated resource root, so declare the web build order.
+tasks.named('sourcesJar') {
+    dependsOn tasks.named('buildWeb')
+    exclude 'web/**'
+}
 test { useJUnitPlatform() }
 loom {
     runs {

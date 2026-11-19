@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class RaidEntryMixin {
     @Inject(method="startOrJoinRaid",at=@At("HEAD"),cancellable=true)
     private void generationControl$enter(PlayerEntity player,BlockState state,RaidCrystalBlockEntity den,ItemStack key,CallbackInfoReturnable<Boolean> cir) {
-        if (!RaidGuard.allowed(den.getRaidBoss())) {
+        if (!RaidGuard.allowed(den.getRaidBossLocation())) {
             player.sendMessage(CobblemonIntegration.blockMessage(),true);
             cir.setReturnValue(false);
         }

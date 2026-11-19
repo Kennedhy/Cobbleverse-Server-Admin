@@ -8,6 +8,7 @@ import com.cobblemon.mod.common.Cobblemon;
 import com.cobblemon.mod.common.api.storage.adapter.flatfile.NBTStoreAdapter;
 import com.cobblemon.mod.common.api.storage.party.PlayerPartyStore;
 import com.cobblemon.mod.common.api.storage.pc.PCStore;
+import com.cobblemon.mod.common.pokemon.Pokemon;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonElement;
@@ -62,6 +63,7 @@ public final class PcInspection {
                        int level, boolean shiny, String nature, String ability, List<String> moves,
                        Map<String, Integer> ivs, Map<String, Integer> evs) {}
     public record Box(int index, int boxCount, String name, String source, List<Slot> slots) {}
+    public record LiveBox(Box box, Map<Integer, Pokemon> pokemon) {}
     public record FileStore(Path path, boolean nbt) {}
     public record Lookup(Box live, List<FileStore> files) {}
     private record JsonBoxRead(int count, JsonObject requestedBox, JsonObject lastBox, int lastBoxIndex) {}
@@ -250,6 +252,17 @@ public final class PcInspection {
         return new Lookup(null, List.copyOf(files));
     }
 
+    /** Market display reads Pokémon only from an already-cached PC and stays on the server thread. */
+    public static LiveBox lookupLiveBox(UUID id, int index) {
+        for (var factory : PlayerImpact.providers()) {
+            var access = (StoreFactoryAccessor) (Object) factory;
+            Object cache = access.generationControl$caches().get(PCStore.class);
+            if (cache != null && ((StoreCacheAccessor) cache).generationControl$cacheMap().get(id) instanceof PCStore store)
+                return liveBoxWithPokemon(store, index);
+        }
+        return new LiveBox(null, Map.of());
+    }
+
     private static Box liveBox(PCStore store, int requested) {
         int count = store.getBoxes().size();
         if (count == 0) return new Box(0, 0, null, "live", List.of());
@@ -269,6 +282,28 @@ public final class PcInspection {
             }
         }
         return new Box(index, count, box.getName(), "live", slots);
+    }
+
+    private static LiveBox liveBoxWithPokemon(PCStore store, int requested) {
+        int count = store.getBoxes().size();
+        if (count == 0) return new LiveBox(new Box(0, 0, null, "live", List.of()), Map.of());
+        int index = Math.min(requested, count - 1);
+        var box = store.getBoxes().get(index);
+        List<Slot> slots = new ArrayList<>();
+        Map<Integer, Pokemon> pokemonByPosition = new LinkedHashMap<>();
+        for (int position = 0; position < SLOTS; position++) {
+            Pokemon pokemon = box.get(position);
+            if (pokemon == null) continue;
+            List<String> moves = pokemon.getMoveSet().getMoves().stream()
+                    .map(move -> move.getTemplate().getName()).limit(4).toList();
+            slots.add(new Slot(position, pokemon.getUuid().toString(), pokemon.getSpecies().getResourceIdentifier().toString(),
+                    pokemon.getForm().formOnlyShowdownId(), pokemon.getNickname() == null ? "" : pokemon.getNickname().getString(),
+                    pokemon.getLevel(), pokemon.getShiny(),
+                    pokemon.getNature().getDisplayName(), pokemon.getAbility() == null ? "" : pokemon.getAbility().getName(),
+                    moves, statValues(pokemon.getIvs()), statValues(pokemon.getEvs())));
+            pokemonByPosition.put(position, pokemon);
+        }
+        return new LiveBox(new Box(index, count, box.getName(), "live", List.copyOf(slots)), Map.copyOf(pokemonByPosition));
     }
 
     /** Parse the saved data on an HTTP worker. Never call the storage provider's repair path. */

@@ -6,7 +6,7 @@ Addon Fabric **server-only** para administrar regras do Cobbleverse por um paine
 
 [Read this in English](README.en.md)
 
-> **Versão 0.7.0 — preview.** Use primeiro em uma cópia do servidor e do mundo. Consulte [o estado de validação](docs/TESTING.md).
+> **Versão 0.8.0 — preview para Cobbleverse 1.8.0.** Use primeiro em uma cópia do servidor e do mundo. Consulte [o estado de validação](docs/TESTING.md).
 
 ## O que administra
 
@@ -34,11 +34,11 @@ As configurações de gerações, ginásios, XP, nível, captura, shiny e limite
 | --- | --- |
 | Minecraft | 1.21.1 |
 | Java | 21 ou superior |
-| Fabric Loader | 0.18.4 ou superior |
-| Fabric API | 0.116.14+1.21.1 |
-| Cobblemon | 1.7.3 |
-| Radical Cobblemon Trainers | 0.18.1-beta |
-| RCT API | 0.15.2-beta |
+| Fabric Loader | 0.19.5 ou superior |
+| Fabric API | 0.116.18+1.21.1 |
+| Cobblemon | 1.8.4 |
+| Radical Cobblemon Trainers | 0.19.2-beta |
+| RCT API | 0.16.2-beta |
 | CobbleDollars (GTS) | 2.0.0 Beta 5.1 |
 | SGui (included in JAR) | 1.6.1+1.21.1 |
 
@@ -52,9 +52,9 @@ O mercado requer CobbleDollars 2.0.0 Beta 5.1. A tela de jogador usa SGui, inclu
 2. Baixe o JAR e os utilitários `open-admin-tunnel.ps1` e `prepare_server_mods.py` na página de [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases). Releases antigas podem não incluir esses arquivos; nesse caso, obtenha-os no código-fonte da mesma versão.
 3. Coloque o JAR somente na pasta `mods/` do servidor Fabric. Não o instale nos clientes.
 4. Inicie o servidor e, como administrador, execute `/geracoes web` para ver os caminhos das credenciais compartilhadas iniciais.
-5. Abra o painel por HTTPS privado ou por um túnel SSH e use o token de administrador inicial. Crie tokens individuais pelo console. A credencial de consulta permite ver jogadores, PCs e histórico e usar o simulador. [Administração do painel](docs/ADMIN.md)
+5. Abra o painel por HTTPS privado, túnel SSH ou pela origem HTTP privada configurada. Use o token de administrador inicial e crie tokens individuais pelo console. A credencial de consulta permite ver jogadores, PCs e histórico e usar o simulador. [Administração do painel](docs/ADMIN.md)
 
-O painel escuta em `127.0.0.1:1` por padrão (`port=0001`). O navegador bloqueia HTTP direto na porta 1. Para alterar a porta, edite `<mundo>/generation-control/web.properties` e reinicie o servidor.
+O painel escuta em `0.0.0.0:18765` (todas as interfaces IPv4) por padrão, mas o acesso remoto direto exige configurar a origem exata em `httpOrigin`. Restrinja a porta por firewall/VPN: HTTP direto não cifra tokens nem sessões. Para acesso remoto, prefira HTTPS privado ou túnel SSH.
 
 ## Compilar do código-fonte
 

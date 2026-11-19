@@ -3,6 +3,7 @@ package br.com.cobbleverse.generations.verification;
 import br.com.cobbleverse.generations.GenerationControl;
 import br.com.cobbleverse.generations.config.ConfigStore;
 import br.com.cobbleverse.generations.data.GymStructures;
+import br.com.cobbleverse.generations.data.SpawnResourcePolicy;
 import br.com.cobbleverse.generations.integration.CobblemonIntegration;
 import com.cobblemon.mod.common.api.events.CobblemonEvents;
 import com.cobblemon.mod.common.api.events.pokemon.PokemonSentEvent;
@@ -68,22 +69,40 @@ public final class RuntimeVerification {
         }
         int spawnFiles = 0;
         int spawnEntries = 0;
+        int alphaSpawnEntries = 0;
         for (var resource : server.getResourceManager().findResources("spawn_pool_world",id -> id.getPath().endsWith(".json")).entrySet()) {
             try (var reader = resource.getValue().getReader()) {
                 var root = JsonParser.parseReader(reader).getAsJsonObject();
                 if (!root.has("spawns")) continue;
                 spawnFiles++;
-                for (var element : root.getAsJsonArray("spawns")) {
-                    var spawn = element.getAsJsonObject();
-                    if (!spawn.has("pokemon")) continue;
-                    String raw = spawn.get("pokemon").getAsString();
+                for (String raw : SpawnResourcePolicy.worldSpawnProperties(root)) {
                     spawnEntries++;
+                    if (raw.toLowerCase(Locale.ROOT).contains("alpha=true")) alphaSpawnEntries++;
                     if (!CobblemonIntegration.allowed(PokemonProperties.Companion.parse(raw))) failed.add("Spawn proibido carregado: "+resource.getKey()+" -> "+raw);
                 }
             }
         }
         detail.put("spawnFilesInspected",spawnFiles);
         detail.put("spawnEntriesInspected",spawnEntries);
+        detail.put("alphaSpawnEntriesInspected",alphaSpawnEntries);
+        if (alphaSpawnEntries == 0) failed.add("Nenhum membro Alpha de spawn foi inspecionado.");
+        int habitatPools = 0;
+        int habitatSpawns = 0;
+        for (var resource : server.getResourceManager().findResources("habitat_pools",id -> id.getPath().endsWith(".json")).entrySet()) {
+            try (var reader = resource.getValue().getReader()) {
+                var root = JsonParser.parseReader(reader).getAsJsonObject();
+                if (!root.has("spawns")) continue;
+                habitatPools++;
+                for (String raw : SpawnResourcePolicy.habitatSpawnProperties(root)) {
+                    habitatSpawns++;
+                    if (!CobblemonIntegration.allowed(PokemonProperties.Companion.parse(raw)))
+                        failed.add("Spawn de habitat proibido: "+resource.getKey()+" -> "+raw);
+                }
+            }
+        }
+        detail.put("habitatPoolsInspected",habitatPools);
+        detail.put("habitatSpawnsInspected",habitatSpawns);
+        if (habitatPools == 0 || habitatSpawns == 0) failed.add("Nenhum pool/spawn de habitat foi inspecionado.");
         int[] teams = {0};
         RCTMod.getInstance().getTrainerManager().getAllData().forEach(entry -> {
             teams[0]++;
@@ -201,27 +220,37 @@ public final class RuntimeVerification {
         detail.put("ruleCheckBenchmark", "Skipped: the synchronous microbenchmark is not representative of server performance.");
         detail.put("forbiddenFossilRecipesInspected",fossilsChecked);
         if (net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("cobblemonraiddens")) {
-            var raidIds=com.necro.raid.dens.common.registry.RaidRegistry.RAID_LIST;
+            int raidResources=0;
             int legal=0;
             int forbidden=0;
-            Integer legalIndex=null;
-            Integer forbiddenIndex=null;
-            for(int i=0;i<raidIds.size();i++) {
-                var boss=com.necro.raid.dens.common.registry.RaidRegistry.getRaidBoss(raidIds.get(i));
-                boolean allowed=br.com.cobbleverse.generations.integration.RaidGuard.allowed(boss);
-                if (allowed) { legal++; if(legalIndex==null && boss.getWeight()>0) legalIndex=i; }
-                else { forbidden++; if(forbiddenIndex==null) forbiddenIndex=i; if(boss.getWeight()!=0.0) failed.add("Raid proibida com peso positivo: "+raidIds.get(i)); }
+            int forbiddenPositiveWeight=0;
+            for(var resource:server.getResourceManager().findResources("raid/boss",
+                    id->id.getNamespace().equals("cobblemonraiddens") && id.getPath().endsWith(".json")).entrySet()) {
+                try(var reader=resource.getValue().getReader()) {
+                    var root=JsonParser.parseReader(reader).getAsJsonObject();
+                    if(!root.has("pokemon") || !root.get("pokemon").isJsonObject()) continue;
+                    raidResources++;
+                    String raw=br.com.cobbleverse.generations.data.RaidResourcePolicy
+                            .pokemonProperties(root.getAsJsonObject("pokemon"));
+                    if(CobblemonIntegration.allowed(PokemonProperties.Companion.parse(raw))) {
+                        legal++;
+                    } else {
+                        forbidden++;
+                        if(!root.has("weight") || root.get("weight").getAsDouble()!=0.0) {
+                            forbiddenPositiveWeight++;
+                            failed.add("Raid proibida com peso positivo: "+resource.getKey()+" -> "+raw);
+                        }
+                    }
+                }
             }
-            detail.put("raidBossesInspected",raidIds.size());
-            detail.put("allowedRaidBosses",legal);
-            detail.put("forbiddenRaidBosses",forbidden);
-            check("raids: policy retains at least one legal encounter",legal>0,passed,failed);
-            var random=net.minecraft.util.math.random.Random.create(123);
-            if(forbiddenIndex!=null) check("raids: explicit forbidden ID excluded from weighted roll",com.necro.raid.dens.common.registry.RaidRegistry.roll(random,new float[]{1},new int[]{forbiddenIndex})==null,passed,failed);
-            if(legalIndex!=null) {
-                check("raids: legal boss can be selected",com.necro.raid.dens.common.registry.RaidRegistry.roll(random,new float[]{1},new int[]{legalIndex}).equals(raidIds.get(legalIndex)),passed,failed);
-                check("raids: zero total weight produces no encounter",com.necro.raid.dens.common.registry.RaidRegistry.roll(random,new float[]{0},new int[]{legalIndex})==null,passed,failed);
-            }
+            detail.put("raidResourcesInspected",raidResources);
+            detail.put("registeredRaidBosses",com.necro.raid.dens.common.registry.RaidRegistry.RAID_LIST.size());
+            detail.put("allowedRaidBossResources",legal);
+            detail.put("forbiddenRaidBossResources",forbidden);
+            detail.put("forbiddenRaidBossesWithPositiveWeight",forbiddenPositiveWeight);
+            check("raids: policy retains legal encounters",legal>0,passed,failed);
+            check("raids: forbidden boss resources have zero weight",forbidden>0 && forbiddenPositiveWeight==0,passed,failed);
+            check("raids: registry has boss IDs",com.necro.raid.dens.common.registry.RaidRegistry.RAID_LIST.size()>0,passed,failed);
         }
         PlayerRuntimeChecks.run(server,passed,failed,detail);
         completed=true;

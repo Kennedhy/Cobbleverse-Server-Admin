@@ -41,9 +41,9 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Small, loopback-only HTTP server. It serves bundled assets and a session-protected admin API. */
+/** Small HTTP server with explicit origin allowlists and a session-protected admin API. */
 public final class WebPanelServer {
-    private static final String DEFAULT_PORT = "0001";
+    private static final String DEFAULT_PORT = "18765";
     private static final int MAX_BODY = 65_536;
     private static final long SESSION_LIFETIME_MS = TimeUnit.HOURS.toMillis(12);
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
@@ -53,6 +53,8 @@ public final class WebPanelServer {
     private final int port;
     private final String httpsOrigin;
     private final String httpsAuthority;
+    private final String httpOrigin;
+    private final String httpAuthority;
     private final Path tokenFile;
     private final Path viewerTokenFile;
     private final Path credentialDirectory;
@@ -71,7 +73,7 @@ public final class WebPanelServer {
     public record CreatedCredential(String name, String role, String token) {}
     private final Map<String, Session> sessions = new ConcurrentHashMap<>();
     private final Map<String, Long> lastAction = new ConcurrentHashMap<>();
-    // All connections come from loopback, including connections from the proxy.
+    // Requests are accepted only for local origins or explicitly configured HTTP(S) origins.
     private final LoginWindow loginAttempts = new LoginWindow();
 
     private static final class LoginWindow {
@@ -80,23 +82,32 @@ public final class WebPanelServer {
     }
 
     private WebPanelServer(MinecraftServer minecraft, int port, String httpsOrigin, String adminToken, Path tokenFile, HttpServer http) {
-        this(minecraft, port, httpsOrigin, adminToken, adminToken, tokenFile,
+        this(minecraft, port, httpsOrigin, "", adminToken, adminToken, tokenFile,
                 tokenFile.resolveSibling("web-view-access.token"), http);
     }
 
     private WebPanelServer(MinecraftServer minecraft, int port, String httpsOrigin, String adminToken,
                            String viewerToken, Path tokenFile, Path viewerTokenFile, HttpServer http) {
-        this(minecraft, port, httpsOrigin, adminToken, viewerToken, tokenFile, viewerTokenFile,
+        this(minecraft, port, httpsOrigin, "", adminToken, viewerToken, tokenFile, viewerTokenFile,
                 tokenFile.resolveSibling("web-users"), List.of(), http);
     }
 
-    private WebPanelServer(MinecraftServer minecraft, int port, String httpsOrigin, String adminToken,
+    private WebPanelServer(MinecraftServer minecraft, int port, String httpsOrigin, String httpOrigin,
+                           String adminToken, String viewerToken, Path tokenFile, Path viewerTokenFile,
+                           HttpServer http) {
+        this(minecraft, port, httpsOrigin, httpOrigin, adminToken, viewerToken, tokenFile, viewerTokenFile,
+                tokenFile.resolveSibling("web-users"), List.of(), http);
+    }
+
+    private WebPanelServer(MinecraftServer minecraft, int port, String httpsOrigin, String httpOrigin, String adminToken,
                            String viewerToken, Path tokenFile, Path viewerTokenFile, Path credentialDirectory,
                            List<Credential> namedCredentials, HttpServer http) {
         this.minecraft = minecraft;
         this.port = port;
         this.httpsOrigin = httpsOrigin;
         this.httpsAuthority = httpsOrigin.isEmpty() ? "" : httpsOrigin.substring("https://".length());
+        this.httpOrigin = httpOrigin;
+        this.httpAuthority = httpOrigin.isEmpty() ? "" : httpOrigin.substring("http://".length());
         this.tokenFile = tokenFile;
         this.viewerTokenFile = viewerTokenFile;
         this.credentialDirectory = credentialDirectory.toAbsolutePath().normalize();
@@ -144,18 +155,24 @@ public final class WebPanelServer {
             int port = Integer.parseInt(properties.getProperty("port", DEFAULT_PORT).trim());
             if (port < 1 || port > 65535) throw new IOException("A porta do painel deve ficar entre 1 e 65535.");
             String httpsOrigin = readHttpsOrigin(properties);
+            String httpOrigin = readHttpOrigin(properties, port);
             String secret = Files.exists(directory.resolve("web-admin-access.disabled")) ? null : loadOrCreateToken(token);
             String viewSecret = Files.exists(directory.resolve("web-view-access.disabled")) ? null : loadOrCreateToken(viewerToken);
             Path users = directory.resolve("web-users");
             List<Credential> namedCredentials = loadNamedCredentials(users);
-            HttpServer http = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 8);
-            WebPanelServer panel = new WebPanelServer(server, port, httpsOrigin, secret, viewSecret,
+            InetAddress bindAddress = InetAddress.getByAddress(new byte[4]);
+            HttpServer http = HttpServer.create(new InetSocketAddress(bindAddress, port), 8);
+            WebPanelServer panel = new WebPanelServer(server, port, httpsOrigin, httpOrigin, secret, viewSecret,
                     token, viewerToken, users, namedCredentials, http);
             String signal = System.getenv("COBBLEVERSE_RESTART_SIGNAL");
             if (signal != null && !signal.isBlank()) panel.restartSignal = Path.of(signal);
             http.start();
             current = panel;
-            GenerationControl.LOGGER.info("Painel web local: http://127.0.0.1:{}", port);
+            GenerationControl.LOGGER.warn("Painel web ouvindo em 0.0.0.0:{} (todas as interfaces IPv4). Restrinja o acesso com firewall/VPN.", port);
+            if (!httpOrigin.isEmpty())
+                GenerationControl.LOGGER.warn("Origem HTTP direta autorizada: {}. HTTP não cifra tokens nem sessões; use somente em rede confiável.", httpOrigin);
+            else if (httpsOrigin.isEmpty())
+                GenerationControl.LOGGER.info("Acesso remoto bloqueado até configurar httpOrigin ou httpsOrigin em {}.", settings);
             if (secret != null) GenerationControl.LOGGER.info("Token admin compartilhado salvo em {}", token);
             if (viewSecret != null) GenerationControl.LOGGER.info("Token de consulta compartilhado salvo em {}", viewerToken);
             if (!httpsOrigin.isEmpty()) GenerationControl.LOGGER.info("Endereço HTTPS configurado para o painel: {}", httpsOrigin);
@@ -178,6 +195,9 @@ public final class WebPanelServer {
         WebPanelServer panel = current;
         if (panel == null) return "O painel web não está ativo. Confira o log do servidor e o arquivo web.properties.";
         String remote = panel.httpsOrigin.isEmpty() ? "" : " | HTTPS: " + panel.httpsOrigin;
+        if (!panel.httpOrigin.isEmpty()) remote += " | HTTP direto autorizado: " + panel.httpOrigin;
+        if (panel.httpsOrigin.isEmpty() && panel.httpOrigin.isEmpty())
+            remote += " | acesso remoto requer configurar httpOrigin ou httpsOrigin";
         String admin = panel.sharedCredentials.stream().anyMatch(credential -> credential.role().equals("admin"))
                 ? "token admin compartilhado em: " + panel.tokenFile : "admin compartilhado desativado";
         String viewer = panel.sharedCredentials.stream().anyMatch(credential -> credential.role().equals("viewer"))
@@ -360,9 +380,10 @@ public final class WebPanelServer {
             Files.createDirectories(file.getParent());
             properties.setProperty("enabled", "true");
             properties.setProperty("port", DEFAULT_PORT);
+            properties.setProperty("httpOrigin", "");
             properties.setProperty("httpsOrigin", "");
             try (var output = Files.newOutputStream(file, StandardOpenOption.CREATE_NEW)) {
-                properties.store(output, "Painel administrativo Cobbleverse. O acesso fica limitado a 127.0.0.1.");
+                properties.store(output, "Painel Cobbleverse: bind 0.0.0.0; restrinja por firewall/VPN e configure as origens remotas permitidas.");
             }
         }
         return properties;
@@ -384,6 +405,37 @@ public final class WebPanelServer {
         String configured = port == -1 ? origin : origin + ":" + port;
         if (!value.equals(configured) && !value.equals(configured + "/")) throw new IOException(error);
         return port == 443 ? origin : configured;
+    }
+
+    static String readHttpOrigin(Properties properties, int panelPort) throws IOException {
+        String value = properties.getProperty("httpOrigin", "").trim().toLowerCase(Locale.ROOT);
+        if (value.isEmpty()) return "";
+        String error = "httpOrigin deve ser uma origem HTTP sem caminho, usuário, query ou fragmento, usando a porta configurada do painel.";
+        URI uri;
+        try { uri = URI.create(value); }
+        catch (IllegalArgumentException invalid) { throw new IOException(error); }
+        String host = uri.getHost();
+        int port = uri.getPort();
+        int effectivePort = port == -1 ? 80 : port;
+        String path = uri.getRawPath();
+        if (!"http".equals(uri.getScheme()) || host == null || host.contains(":") || host.equals("0.0.0.0")
+                || isLoopbackHost(host)
+                || uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null
+                || (path != null && !path.isEmpty() && !path.equals("/"))
+                || port == 0 || port > 65535 || effectivePort != panelPort) {
+            throw new IOException(error);
+        }
+
+        String normalizedHost = host.toLowerCase(Locale.ROOT);
+        String canonicalAuthority = normalizedHost + (effectivePort == 80 ? "" : ":" + effectivePort);
+        String canonical = "http://" + canonicalAuthority;
+        String explicitPort = port == -1 ? "" : ":" + port;
+        String supplied = "http://" + normalizedHost + explicitPort;
+        if (!value.equals(canonical) && !value.equals(canonical + "/")
+                && !value.equals(supplied) && !value.equals(supplied + "/")) {
+            throw new IOException(error);
+        }
+        return canonical;
     }
 
     private static String loadOrCreateToken(Path file) throws IOException {
@@ -533,30 +585,6 @@ public final class WebPanelServer {
             throttle(sessionId);
             JsonObject payload = ConfigStore.GSON.fromJson(body(exchange), JsonObject.class);
             json(exchange, 200, onServer(() -> TrainerOperationsSettings.update(payload, true)));
-            return;
-        }
-        if (path.equals("/api/wild-combat")) {
-            if (method.equals("GET")) {
-                try { json(exchange, 200, WildPokemonCombatSettings.read()); }
-                catch (IOException failure) {
-                    throw new WebPanelService.Problem(503, "Não foi possível ler a configuração do Fight or Flight.");
-                }
-                return;
-            }
-            if (!method.equals("PUT")) { methodNotAllowed(exchange, "GET, PUT"); return; }
-            if (!canEdit(sessionId)) throw new WebPanelService.Problem(403, "Esta credencial permite apenas consulta.");
-            throttle(sessionId);
-            JsonObject payload = ConfigStore.GSON.fromJson(body(exchange), JsonObject.class);
-            try {
-                json(exchange, 200, WildPokemonCombatSettings.update(payload));
-            } catch (WildPokemonCombatSettings.StaleConfigurationException stale) {
-                throw new WebPanelService.Problem(409, safeMessage(stale.getMessage()));
-            } catch (IllegalStateException unavailable) {
-                throw new WebPanelService.Problem(503, safeMessage(unavailable.getMessage()));
-            } catch (IOException failure) {
-                GenerationControl.LOGGER.error("Não foi possível salvar a configuração do Fight or Flight.", failure);
-                throw new WebPanelService.Problem(503, "Não foi possível salvar a configuração do Fight or Flight.");
-            }
             return;
         }
         if (path.equals("/api/trainer-difficulty")) {
@@ -761,7 +789,7 @@ public final class WebPanelServer {
         }
         if (path.equals("/api/server/restart")) { methodNotAllowed(exchange, "POST"); return; }
         if (path.equals("/api/session")) { methodNotAllowed(exchange, "GET, POST, DELETE"); return; }
-        if (path.equals("/api/state") || path.equals("/api/dashboard") || path.equals("/api/legendary-limits") || path.equals("/api/job") || path.equals("/api/species") || path.equals("/api/action") || path.equals("/api/simulate") || path.equals("/api/history") || path.equals("/api/pc/edit") || path.equals("/api/wild-combat") || path.equals("/api/market/listings") || path.equals("/api/market/transactions") || path.equals("/api/market/settings")) {
+        if (path.equals("/api/state") || path.equals("/api/dashboard") || path.equals("/api/legendary-limits") || path.equals("/api/job") || path.equals("/api/species") || path.equals("/api/action") || path.equals("/api/simulate") || path.equals("/api/history") || path.equals("/api/pc/edit") || path.equals("/api/market/listings") || path.equals("/api/market/transactions") || path.equals("/api/market/settings")) {
             methodNotAllowed(exchange, path.equals("/api/action") || path.equals("/api/simulate") || path.equals("/api/pc/edit") ? "POST" : "GET"); return;
         }
         json(exchange, 404, Map.of("message", "Rota não encontrada."));
@@ -984,9 +1012,10 @@ public final class WebPanelServer {
     private String expectedOrigin(HttpExchange exchange) {
         String authority = exchange.getRequestHeaders().getFirst("Host");
         if (authority == null || authority.isBlank() || !authority.equals(authority.trim())) return null;
-        if (authority.equalsIgnoreCase(httpsAuthority)) return httpsOrigin;
-
         authority = authority.toLowerCase(Locale.ROOT);
+        if (!httpsAuthority.isEmpty() && matchesConfiguredAuthority(authority, httpsAuthority, 443)) return httpsOrigin;
+        if (!httpAuthority.isEmpty() && matchesConfiguredAuthority(authority, httpAuthority, 80)) return httpOrigin;
+
         String host = authority;
         int colon = authority.lastIndexOf(':');
         if (colon >= 0) {
@@ -1001,8 +1030,20 @@ public final class WebPanelServer {
             host = authority.substring(0, colon);
         }
 
-        // SSH local forwarding may expose this loopback service on a different browser-side port.
-        return host.equals("127.0.0.1") || host.equals("localhost") ? "http://" + authority : null;
+        // Preserve local browser access and SSH local forwarding without letting remote peers
+        // bypass the configured Host allowlist by sending a loopback Host header.
+        var remote = exchange.getRemoteAddress();
+        boolean loopbackPeer = remote != null && remote.getAddress() != null && remote.getAddress().isLoopbackAddress();
+        return loopbackPeer && isLoopbackHost(host) ? "http://" + authority : null;
+    }
+
+    private static boolean matchesConfiguredAuthority(String request, String configured, int defaultPort) {
+        return request.equals(configured) || configured.indexOf(':') < 0 && request.equals(configured + ":" + defaultPort);
+    }
+
+    private static boolean isLoopbackHost(String host) {
+        return host.equals("localhost") || host.endsWith(".localhost")
+                || host.equals("127") || host.startsWith("127.");
     }
 
     private String cookie(HttpExchange exchange, String name) {

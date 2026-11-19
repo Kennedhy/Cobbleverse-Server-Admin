@@ -46,10 +46,7 @@ O usuário pediu explicitamente para remover a interface de configuração dentr
 
 ### Combate de Pokémon selvagens
 
-- Usar o Fight or Flight que já faz parte do modpack para gerenciar ataques diretos de Pokémon selvagens contra jogadores.
-- Expor no painel controles de reação a provocação, ataque sem provocação, restrição de ataques espontâneos à pouca luz, níveis mínimos, limiares/multiplicador de agressividade, ativação de ataques à distância e dano mínimo/máximo para ataques corpo a corpo e à distância.
-- Alterar somente os campos conhecidos de config/fightorflight.json5, preservando opções e comentários desconhecidos; escrita apenas sob ação administrativa e sem trabalho por tick.
-- Credenciais viewer podem consultar, mas não editar. Detectar alterações externas concorrentes e sinalizar que o servidor deve reiniciar para aplicar os novos valores.
+- A página anterior de controles do Fight or Flight era específica do Cobbleverse 1.7.x. O Cobbleverse 1.8.0 remove esse mod; não oferecer seus campos nem presumir equivalência com as configurações nativas do Cobblemon. Qualquer substituição exige confirmar a semântica e a API da versão instalada.
 
 ### PC dos jogadores
 
@@ -74,7 +71,7 @@ O usuário pediu explicitamente para remover a interface de configuração dentr
 - Toda configuração administrativa fica no painel web; não manter painel administrativo dentro do jogo.
 - Organizar o painel para cobrir gerações/ginásios, regras, XP/níveis, captura/shiny, treinadores/recompensas, PC/progressão individual e estado dos jogadores online.
 - O dashboard se limita a dados de jogadores e regras ativas, e ao reinício supervisionado. Não manter páginas de presets, gerenciamento de acesso, diagnóstico ou monitoramento de recursos do servidor.
-- Manter o painel privado, preso ao loopback por padrão. Para uso remoto, preferir VPN/segmento privado, HTTPS privado ou túnel SSH. Não expor a porta do painel à internet nem aos jogadores.
+- O painel escuta em `0.0.0.0` (todas as interfaces IPv4), mas só aceita origens locais ou explicitamente configuradas (`httpOrigin`/`httpsOrigin`). Para uso remoto, preferir VPN/segmento privado, HTTPS privado ou túnel SSH. HTTP direto não cifra tokens nem sessões; restringir a porta por firewall/VPN e nunca expor à internet nem aos jogadores.
 - Usar credenciais de administrador e consulta conforme a necessidade. Acesso de consulta pode ler dados do PC; alterações de regras, acessos e Pokémon ficam restritas a administradores.
 
 ## Desempenho e integração
@@ -107,8 +104,14 @@ Eventos especiais ou dados econômicos mais granulares continuam como possibilid
 
 ## Estado registrado neste repasse
 
-- A release pública mais recente é `v0.7.0` preview, publicada em 14 de novembro de 2026 com o mercado/GTS, cotas lendárias, controles de combate selvagem e os ajustes de desempenho deste ciclo. Continue agrupando alterações menores em `Unreleased`.
-- A release `v0.7.0` passou pelo workflow de build e auditoria server-only. Os assets publicados foram baixados e os checksums conferidos; JAR e evidências estão registrados em `docs/TESTING.md`.
-- O GTS/leilões passou por smoke local com o Cobbleverse 1.7.42, Cobblemon 1.7.3, CobbleDollars 2.0.0 Beta 5.1 e cliente conectado sem o addon. GUI aberta, custódia de Pokémon/itens, compra, lances, reembolso, entrega ao vencedor e pagamento pendente foram exercitados. A transação foi chamada pelo fixture de servidor; cliques manuais e captura visual não foram testados.
+- A release pública mais recente é `v0.8.0` preview, publicada em 19 de novembro de 2026 com a migração para Cobbleverse 1.8.0: Cobblemon 1.8.4, RCT 0.19.2-beta, remoção da página Fight or Flight, filtros de Alpha/habitat, política de raids assíncrona, bind do painel em `0.0.0.0:18765` e a correção da ordem do build web.
+- A release `v0.7.0` passou pelo workflow de build e auditoria server-only. Os assets publicados foram baixados e os checksums conferidos; JAR e evidências estão registrados em `docs/TESTING.md`. A `v0.8.0` seguiu o mesmo fluxo.
+- O GTS/leilões passou por smoke local com o Cobbleverse 1.7.42, Cobblemon 1.7.3, CobbleDollars 2.0.0 Beta 5.1 e cliente conectado sem o addon. GUI aberta, custódia de Pokémon/itens, compra, lances, reembolso, entrega ao vencedor e pagamento pendente foram exercitados. A transação foi chamada pelo fixture de servidor; cliques manuais e captura visual não foram testados. Essa evidência não valida Cobbleverse 1.8.0.
 - A revisão atual indexa grupos/perfis RCT ao salvar regras, reutiliza tabelas ponderadas de raid em cache limitado e reduz alocações/custos de busca na verificação de batalhas e recuperação de inventário. Build local, 66 testes, auditoria server-only e smoke de raids no pack passaram. Ainda não há benchmark A/B de MSPT, heap ou TPS em servidor dedicado nem smoke de batalha real de treinador. Consulte `docs/TESTING.md`.
 - Preserve quaisquer alterações locais ao continuar; não faça commit, push, tag ou release em etapas futuras sem instrução específica para aquela etapa.
+
+### Auditoria Cobbleverse 1.8.0 — atualização de 18–19/11/2026
+
+- A política de geração agora filtra Pokémon aninhados nos grupos Alpha e nos pools de habitat; os testes e o smoke Kanto-only passaram contra os recursos carregados do Cobbleverse 1.8.0.
+- A integração com Raid Dens 0.13.5 respeita o cache assíncrono de chefes e filtra pesos durante o carregamento do datapack. O relatório de runtime encontrou 1.124 recursos de chefes, com 954 bloqueados em peso zero, sem consultar sincronamente os 19.224 IDs registrados.
+- O build local passou com 72 testes e auditoria server-only. O pack descartável 1.8.0 confirmou novamente a política de spawns/habitat/ginásios/raids e o painel respondeu pelo IP Wi‑Fi do mesmo host com a origem exata allowlisted. Persistem as limitações de armazenamento sob carga, batalha/captura real, acesso a partir de outro dispositivo da LAN e composição server-side original descritas em `docs/TESTING.md`; não publicar esta revisão sem solicitação.

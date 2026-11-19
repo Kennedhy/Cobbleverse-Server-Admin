@@ -8,7 +8,7 @@ param(
     [int]$LocalPort = 0,
 
     [ValidateRange(1, 65535)]
-    [int]$RemotePort = 1,
+    [int]$RemotePort = 18765,
     [switch]$OpenBrowser,
 
     [switch]$CopyToken,

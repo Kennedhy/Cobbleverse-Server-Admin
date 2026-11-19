@@ -3,6 +3,7 @@ package br.com.cobbleverse.generations.verification;
 import br.com.cobbleverse.generations.GenerationControl;
 import br.com.cobbleverse.generations.data.GymStructures;
 import br.com.cobbleverse.generations.data.PolicyResources;
+import br.com.cobbleverse.generations.data.SpawnResourcePolicy;
 import br.com.cobbleverse.generations.integration.CobblemonIntegration;
 import br.com.cobbleverse.generations.integration.ValidationReport;
 import br.com.cobbleverse.generations.rules.GenerationRules;
@@ -38,17 +39,16 @@ public final class GenerationPolicyVerification {
 
             int spawnFiles = 0;
             int spawnEntries = 0;
+            int alphaSpawnEntries = 0;
             for (var entry : server.getResourceManager().findResources("spawn_pool_world",
                     id -> id.getPath().endsWith(".json")).entrySet()) {
                 try (var reader = entry.getValue().getReader()) {
                     JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
                     if (!root.has("spawns")) continue;
                     spawnFiles++;
-                    for (JsonElement spawn : root.getAsJsonArray("spawns")) {
-                        JsonObject detail = spawn.getAsJsonObject();
-                        if (!detail.has("pokemon")) continue;
+                    for (String raw : SpawnResourcePolicy.worldSpawnProperties(root)) {
                         spawnEntries++;
-                        String raw = detail.get("pokemon").getAsString();
+                        if (raw.toLowerCase(java.util.Locale.ROOT).contains("alpha=true")) alphaSpawnEntries++;
                         if (!CobblemonIntegration.allowed(PokemonProperties.Companion.parse(raw)))
                             failures.add("Spawn fora da política carregado: " + entry.getKey() + " -> " + raw);
                     }
@@ -56,7 +56,28 @@ public final class GenerationPolicyVerification {
             }
             result.put("spawnFilesInspected", spawnFiles);
             result.put("spawnEntriesInspected", spawnEntries);
+            result.put("alphaSpawnEntriesInspected", alphaSpawnEntries);
             if (spawnFiles == 0 || spawnEntries == 0) failures.add("Nenhum spawn de Pokémon foi encontrado para inspecionar.");
+            if (alphaSpawnEntries == 0) failures.add("Nenhum membro Alpha de spawn foi encontrado para inspecionar.");
+
+            int habitatPools = 0;
+            int habitatSpawns = 0;
+            for (var entry : server.getResourceManager().findResources("habitat_pools",
+                    id -> id.getPath().endsWith(".json")).entrySet()) {
+                try (var reader = entry.getValue().getReader()) {
+                    JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+                    if (!root.has("spawns")) continue;
+                    habitatPools++;
+                    for (String raw : SpawnResourcePolicy.habitatSpawnProperties(root)) {
+                        habitatSpawns++;
+                        if (!CobblemonIntegration.allowed(PokemonProperties.Companion.parse(raw)))
+                            failures.add("Spawn de habitat fora da política carregado: " + entry.getKey() + " -> " + raw);
+                    }
+                }
+            }
+            result.put("habitatPoolsInspected", habitatPools);
+            result.put("habitatSpawnsInspected", habitatSpawns);
+            if (habitatPools == 0 || habitatSpawns == 0) failures.add("Nenhum pool de habitat foi encontrado para inspecionar.");
 
             int gymStructuresInspected = 0;
             int activeGymStructures = 0;
@@ -99,40 +120,40 @@ public final class GenerationPolicyVerification {
             failures.addAll(teamReport.errors);
 
             if (net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("cobblemonraiddens")) {
-                var raidIds = com.necro.raid.dens.common.registry.RaidRegistry.RAID_LIST;
-                Integer legalIndex = null;
-                Integer forbiddenIndex = null;
-                int legal = 0;
-                int forbidden = 0;
-                for (int index = 0; index < raidIds.size(); index++) {
-                    var boss = com.necro.raid.dens.common.registry.RaidRegistry.getRaidBoss(raidIds.get(index));
-                    if (br.com.cobbleverse.generations.integration.RaidGuard.allowed(boss)) {
-                        legal++;
-                        if (legalIndex == null && boss.getWeight() > 0) legalIndex = index;
-                    } else {
-                        forbidden++;
-                        if (forbiddenIndex == null) forbiddenIndex = index;
-                        if (boss.getWeight() != 0.0) failures.add("Raid proibida com peso positivo: " + raidIds.get(index));
+                int raidResources = 0;
+                int allowedBosses = 0;
+                int forbiddenBosses = 0;
+                int forbiddenPositiveWeight = 0;
+                for (var entry : server.getResourceManager().findResources("raid/boss",
+                        id -> id.getNamespace().equals("cobblemonraiddens") && id.getPath().endsWith(".json")).entrySet()) {
+                    try (var reader = entry.getValue().getReader()) {
+                        JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+                        if (!root.has("pokemon") || !root.get("pokemon").isJsonObject()) continue;
+                        raidResources++;
+                        String raw = br.com.cobbleverse.generations.data.RaidResourcePolicy
+                                .pokemonProperties(root.getAsJsonObject("pokemon"));
+                        boolean allowed = CobblemonIntegration.allowed(PokemonProperties.Companion.parse(raw));
+                        if (allowed) {
+                            allowedBosses++;
+                        } else {
+                            forbiddenBosses++;
+                            if (!root.has("weight") || root.get("weight").getAsDouble() != 0.0) {
+                                forbiddenPositiveWeight++;
+                                failures.add("Raid fora da política mantém peso positivo: " + entry.getKey() + " -> " + raw);
+                            }
+                        }
                     }
                 }
-                result.put("raidBossesInspected", raidIds.size());
-                result.put("allowedRaidBosses", legal);
-                result.put("forbiddenRaidBosses", forbidden);
-                if (legal == 0) failures.add("Nenhum chefe de raid permitido foi encontrado.");
-                if (forbiddenIndex != null && com.necro.raid.dens.common.registry.RaidRegistry.roll(
-                        net.minecraft.util.math.random.Random.create(123), new float[]{1}, new int[]{forbiddenIndex}) != null)
-                    failures.add("A rolagem ponderada selecionou um chefe proibido.");
-                if (legalIndex != null) {
-                    var legalId = raidIds.get(legalIndex);
-                    for (int attempt = 0; attempt < 2; attempt++) {
-                        if (!legalId.equals(com.necro.raid.dens.common.registry.RaidRegistry.roll(
-                                net.minecraft.util.math.random.Random.create(123), new float[]{1}, new int[]{legalIndex})))
-                            failures.add("A tabela em cache não selecionou o chefe permitido esperado.");
-                    }
-                    if (com.necro.raid.dens.common.registry.RaidRegistry.roll(
-                            net.minecraft.util.math.random.Random.create(123), new float[]{0}, new int[]{legalIndex}) != null)
-                        failures.add("Uma raid de peso zero foi selecionada.");
-                }
+                result.put("raidResourcesInspected", raidResources);
+                result.put("registeredRaidBosses", com.necro.raid.dens.common.registry.RaidRegistry.RAID_LIST.size());
+                result.put("allowedRaidBossResources", allowedBosses);
+                result.put("forbiddenRaidBossResources", forbiddenBosses);
+                result.put("forbiddenRaidBossesWithPositiveWeight", forbiddenPositiveWeight);
+                if (raidResources == 0) failures.add("Nenhum recurso de chefe Raid Dens foi encontrado.");
+                if (allowedBosses == 0) failures.add("Nenhum chefe de raid permitido foi encontrado.");
+                if (forbiddenBosses == 0) failures.add("Nenhum chefe de raid proibido foi encontrado para testar o filtro.");
+                if (com.necro.raid.dens.common.registry.RaidRegistry.RAID_LIST.isEmpty())
+                    failures.add("Nenhum chefe foi registrado pelo Raid Dens.");
             }
         } catch (Throwable failure) {
             failures.add("Verificação interrompida: " + failure.getClass().getSimpleName() + ": " + failure.getMessage());

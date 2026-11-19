@@ -8,16 +8,16 @@ public final class Compatibility {
     private record Module(String id,String version,String scope) {}
     private static final List<Module> MODULES=List.of(
         new Module("minecraft","1.21.1","mundo e estruturas"),
-        new Module("cobblemon","1.7.3+1.21.1","espécies, encontros, iniciais, armazenamento, evolução e fósseis"),
-        new Module("rctapi","0.15.2-beta","equipes e séries"),
-        new Module("rctmod","0.18.1-beta","líderes e progresso individual"),
-        new Module("cobbreeding","2.2.2","reprodução e ovos"),
-        new Module("cobblemonraiddens","0.11.3+1.21.1","chefes, recompensa, seleção e entrada em raid"),
+        new Module("cobblemon","1.8.4+1.21.1","espécies, encontros, iniciais, armazenamento, evolução e fósseis"),
+        new Module("rctapi","0.16.2-beta","equipes e séries"),
+        new Module("rctmod","0.19.2-beta","líderes e progresso individual"),
+        new Module("cobbreeding","2.4.1","reprodução e ovos"),
+        new Module("cobblemonraiddens","0.13.5+1.21.1","chefes, recompensa, seleção e entrada em raid"),
         new Module("lumymon","0.6.6","altares e invocações"),
         new Module("legendarymonuments","Cobbleverse","monumentos, rituais e desafios"),
         new Module("cobblemon-additions","4.1.6","spawners de desafios"),
-        new Module("mega_showdown","1.8.4+1.7.3+1.21.1","megavolução e formas primais"),
-        new Module("zamega","1.7.3","formas pelo mecanismo Mega Showdown")
+        new Module("mega_showdown","1.3.3+1.8.4+1.21.1-release","megavolução e formas primais"),
+        new Module("zamega","1.8.2+1.8.2","formas pelo mecanismo Mega Showdown")
     );
     private Compatibility() {}
     public static void inspect(ValidationReport report) {

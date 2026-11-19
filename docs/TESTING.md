@@ -1,6 +1,42 @@
 # Estado de validação
 
-O projeto é um preview para o modpack Cobbleverse de Minecraft 1.21.1. Este documento separa o que foi observado do que ainda precisa de servidor e jogadores reais.
+O projeto está sendo migrado para Cobbleverse 1.8.0 (Minecraft 1.21.1, Cobblemon 1.8.4). Os resultados históricos abaixo referem-se a 1.7.x e não comprovam compatibilidade com 1.8.0.
+
+## Versão 0.8.0 Preview — build local (2026-11-19)
+
+- `.\gradlew.bat --no-daemon --max-workers=1 build` passou com **72 testes, 0 falhas, 0 erros**, incluindo `sourcesJar`; `test remapJar remapVerificationJar --rerun-tasks` também passou do zero.
+- `tools/verify_server_jar.py` confirmou o artefato server-only `cobbleverse-generation-control-0.8.0.jar`: 185 classes, 37 mixins, 743.173 bytes e assets web presentes. SHA-256: `0053877ad0a5f2e695be2fb6f44a24684a43b3561fa7d33f73c86e089cf586d4`.
+- A auditoria do painel e o smoke conectado de captura desta versão estão descritos nas seções de 19/11/2026 abaixo. Os limites conhecidos continuam registrados no fim da migração.
+- O workflow de build e a publicação da release são executados após o envio da tag `v0.8.0`.
+
+## Migração Cobbleverse 1.8.0 — validação local (2026-11-18/19)
+
+- Atualizados os pins para Fabric Loader 0.19.5, Fabric API 0.116.18+1.21.1, Cobblemon 1.8.4, RCT 0.19.2-beta e RCT API 0.16.2-beta. Os hashes SHA-256 das dependências estão registrados em `gradle/verification-metadata.xml`.
+- `.\gradlew.bat --no-daemon --max-workers=1 test remapJar remapVerificationJar` passou. As métricas do JAR final auditado estão registradas abaixo.
+- Adaptado o filtro de starters para preservar ordem, metadados de categoria e seleção aleatória. O primeiro boot revelou alterações no Raid Dens 0.13.5 (campo `aspects` removido e nova assinatura de `spawnRaidBoss`); o mixin e a lista de versões reconhecidas foram atualizados. O servidor completou o boot com Cobblemon 1.8.4, Raid Dens, RCT 0.19.2 e os demais módulos reconhecidos, sem falha de Mixin.
+- Em uma cópia descartável do pack, um cliente Fabric sem o addon conectou. O smoke autenticado confirmou estado do painel, configurações/anúncios/transações GTS, simulação de filtros/XP/cap e consulta do PC ao vivo, incluindo o Pokémon de teste.
+- A validação conectada do armazenamento não foi concluída: durante a consulta de progresso, o painel respondeu HTTP 503/timeout enquanto o smoke adicionava 240 Pokémon ao servidor. Isso valida a resposta limitada de servidor ocupado, mas deixa pendente a confirmação da rechecagem incremental do store em runtime. Não aumentamos o timeout de produção.
+- **Limitação do ambiente do smoke:** o servidor descartável foi iniciado sem C2ME, pois a seleção de mods do pack apresenta requisitos Java incompatíveis entre C2ME e Cobblemon; Athena e Fusion, marcados como indisponíveis no servidor pelo índice, foram incluídos por serem dependências de outros mods. Portanto, o boot e os fluxos acima não certificam a pasta server-side original sem ajustes.
+- Removidos a página e o endpoint de Fight or Flight porque Cobbleverse 1.8.0 remove esse mod. Nenhum comportamento substituto de agressividade foi implementado; as opções antigas não são equivalentes automaticamente à configuração Cobblemon `playerDamagePokemon`.
+- Os filtros de spawn agora inspecionam membros dentro de `herdablePokemon` (incluindo líderes Alpha) e `habitat_pools`, compondo espécie com forma/aspectos/modificadores. Testes unitários cobrem a preservação de grupos com líder válido e o descarte de grupos sem líder permitido.
+- A auditoria do Raid Dens 0.13.5 confirmou que `getRaidBoss(id)` pode retornar `null` durante a carga assíncrona. Os hooks agora adiam a decisão para IDs registrados ainda sem objeto; a rolagem não tenta carregar milhares de chefes e usa os pesos já filtrados no datapack.
+- Em smoke dedicado descartável com política somente Kanto, o verificador passou: 1.746 arquivos de spawn/1.293 propriedades inspecionadas (155 Alpha), 51 pools/321 spawns de habitat, 1.124 recursos de chefes de raid (170 permitidos e 954 bloqueados, todos com peso zero), 9 estruturas de ginásio e 1.714 equipes RCT. Relatório: `build/pack-smoke-cobbleverse-180/server/runtime-policy-result.json`.
+- `test remapJar remapVerificationJar` passou com 72 testes, sem falhas; a auditoria do JAR confirmou 185 classes, 37 mixins, 743.173 bytes e assets web. Os verificadores inspecionam os recursos carregados sem forçar a leitura síncrona do cache de chefes do Raid Dens.
+- No fixture conectado do mercado, o cliente entrou e as telas do PC e dos detalhes do anúncio passaram pelas asserções de `PokemonItem` e tooltip (nível, natureza, IVs, EVs e tamanho). O anúncio de Pokémon foi criado e cancelado. O smoke completo **não passou**: a confirmação assíncrona da retirada informou que o arquivo persistido ainda não continha o Pokémon; depois, o watchdog encerrou o servidor durante `SpawnDensityCapper`. Assim, a validação visual por captura e a retirada/persistência de ponta a ponta continuam pendentes; o encerramento do servidor não foi atribuído à GUI.
+- O painel escuta em `0.0.0.0:18765` por padrão; um teste de integração confirma que uma instalação nova grava essa porta. No pack descartável, o JAR atual iniciou e aceitou a origem HTTP allowlisted pelo endereço Wi‑Fi deste mesmo computador: página/login 200, API sem sessão 401 e Host/Origin falsificados ou não listados 403. Isso não equivale a testar de outro dispositivo nem valida firewall/roteador.
+- Reexecutei a verificação de política no pack Cobbleverse 1.8.0 com o JAR atual: 1.746 arquivos/1.293 entradas de spawn, 51 pools/321 spawns de habitat, 9 estruturas de ginásio, 1.714 equipes RCT e 1.124 recursos de raid; os 954 chefes proibidos ficaram com peso zero, sem falhas.
+- Corrigi no smoke automatizado o marcador de inicialização do painel, que ainda esperava uma mensagem removida. A checagem do marcador contra o log do servidor atual passou.
+- Uma tentativa de rechecagem sintética com PC em cache não produziu relatório dentro de 360 segundos durante a carga do pack; outra execução sem cache percorreu 900 Pokémon, mas não exercitou a rechecagem. Nenhuma das duas conta como aprovação; a validação conectada anterior de 240 Pokémon também terminou em HTTP 503/timeout.
+- Ainda faltam batalhas jogadas de raid, captura por arremesso e combate PvE/PvP, rechecagem do armazenamento sob carga em runtime e smoke com a composição server-side original quando o conflito de dependências do pack for resolvido. O teste de rede foi feito pelo próprio host, não por outro dispositivo da LAN.
+
+### Validação de 19/11/2026 — captura conectada e auditoria do painel
+
+- O fixture conectado de captura passou na cópia descartável: 2.000 amostras por combinação, Poké Ball 12,95% em 1× e 22,7% em 2×, Ultra Ball 18,35% em 1× e 41,7% em 2×, zero sucesso com chance zerada e Master Ball sempre garantida. Esse resultado confirma os multiplicadores globais no calculador padrão do Cobblemon, não um arremesso manual com jogador.
+- O painel foi percorrido em navegador real contra o servidor descartável (boot sem o fixture de desenvolvimento). As dez páginas — Visão geral, Gerações e ginásios, Regras, XP e níveis, Captura, Treinadores (aparições e dificuldade), PC dos jogadores, Mercado Pokémon, Histórico e Mundo — renderizaram sem erro de JavaScript. As leituras usadas pelas páginas responderam 200: `state`, `dashboard`, `legendary-limits`, `trainer-operations`, `trainer-difficulty`, `pc/players`, `pc/box`, `market/settings`, `market/listings`, `market/transactions`, `history` e `species`.
+- Sem sessão, `/api/state` respondeu 401. Com credencial de consulta, as leituras continuaram em 200 e as oito rotas de escrita testadas responderam 403: `action`, `pc/edit`, `player/progress/edit`, `market/settings`, remoção de anúncio, `trainer-operations`, `trainer-difficulty` e `server/restart`. Na interface, os interruptores do mercado e os botões de salvar ficaram desabilitados nessa credencial.
+- O valor de XP 101 foi recusado no cliente com a mensagem de faixa antes de qualquer chamada ao servidor, confirmando a validação de rascunho do painel. O PC abriu com 60 caixas a partir do arquivo salvo e a consulta de progresso RCT respondeu 409 para jogador offline, como esperado.
+- Corrigido um defeito de build: `:sourcesJar` lia a saída de `:buildWeb` sem dependência declarada, e `gradlew build` falhava na validação do Gradle. O arquivo de fontes agora declara a ordem do build web e não empacota o painel gerado. `.\gradlew.bat --no-daemon --max-workers=1 build` passou, inclusive recriando os assets web do zero.
+
 
 ## Versão 0.7.0 Preview — build para release (2026-11-14)
 
@@ -41,7 +77,7 @@ Esta auditoria descreve os caminhos inspecionados, não garante ausência de pau
 - Em uma cópia descartável do Cobbleverse com Cobblemon 1.7.3, a equipe salva de um jogador offline retornou um Mewtwo de um total máximo de dois. A edição administrativa no PC ocupou a última vaga e o valor persistiu após reiniciar. A API retornou o mesmo total para administradores e leitores e recusou adicionar um terceiro Mewtwo com HTTP 409.
 - O smoke cobriu inicialização, leitura do mundo, persistência e aplicação do teto pelo PC. Captura em jogo com Master Ball, capturas concorrentes, evolução e transferência de lendários pelo GTS ainda não foram exercitadas. O teste local não mediu TPS nem MSPT.
 
-## Ataques de Pokémon selvagens — smoke local (2026-11-14)
+## Histórico 1.7.x: ataques de Pokémon selvagens — smoke local (2026-11-14)
 
 - `npm run build` e `gradlew.bat remapJar` passaram com a nova página e a API de combate selvagem. O JAR server-only contém 175 classes, 36 mixins e 709.143 bytes; os assets web estão incluídos. SHA-256: `CA531334768125896D6B0943E1465F6CB328D226A173AB07F0241390DC7693EE`.
 - Uma cópia descartável do Cobbleverse iniciou em `build/pack-smoke-gts-runtime/server`, Minecraft `127.0.0.1:25593`, painel `127.0.0.1:18771`; o modpack carregou Fight or Flight. A página e o bundle foram servidos pelo painel (HTTP 200), e a rota `/api/wild-combat` leu a configuração real `fightorflight.json5`.
@@ -160,7 +196,7 @@ Esse teste não validou host dedicado via SSH, carga real, migração de progres
 | Compilação e empacotamento 0.7.0 | Build `43641701925` concluído | Testes automatizados, JAR remapeado e auditoria server-only; assets web presentes |
 | Metadados server-only | Verificados no JAR 0.7.0 | 184 classes, 37 mixins e assets web; sem classes client-only |
 | Login, dashboard e reinício | Smoke local 0.6.0 observado | Login admin, players, reinício disponível via supervisor; sem campos de monitoramento de servidor |
-| Pokémon selvagens | Smoke API local do candidato 0.7.0 | Leitura/gravação de danos e agressividade, persistência, viewer 403 e revisão vencida 409; sem jogador em combate |
+| Pokémon selvagens | Removido em 1.8.0 | Fight or Flight não está no Cobbleverse 1.8.0; o smoke histórico abaixo é somente para o pack 1.7.x |
 | Aparições e recompensas | Smoke local 0.6.0 observado | API RCT e CobbleDollars; mudança de spawn aplicada e restaurada |
 | Dificuldade por grupos | Smoke local 0.6.0 observado | Catálogo de 1.559 treinadores/10 categorias, dois grupos, perfil combinado persistido; viewer GET 200 e PUT 403 |
 | PC e progressão individual | Build local concluído | Consultas/edições compilam; requer jogador conectado para validar dados reais ao vivo |

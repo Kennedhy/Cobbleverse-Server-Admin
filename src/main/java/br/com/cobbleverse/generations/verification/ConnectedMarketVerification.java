@@ -15,9 +15,11 @@ import com.cobblemon.mod.common.Cobblemon;
 import com.cobblemon.mod.common.api.pokemon.PokemonSpecies;
 import com.cobblemon.mod.common.api.storage.pc.PCPosition;
 import com.cobblemon.mod.common.api.storage.pc.PCStore;
+import com.cobblemon.mod.common.item.PokemonItem;
 import com.cobblemon.mod.common.pokemon.Pokemon;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.component.DataComponentTypes;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.server.MinecraftServer;
@@ -27,6 +29,7 @@ import java.lang.reflect.Modifier;
 import java.math.BigInteger;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -89,6 +92,8 @@ public final class ConnectedMarketVerification implements ModInitializer {
                             }
                         }
                         if (!found) throw new IllegalStateException("O PC de teste está cheio.");
+                        openPokemonBox(player, box);
+                        verifyPokemonGui(player, "seleção do PC");
                         market.listPokemon(player, box, slot, "fixed", 100, 0, pokemon.getUuid().toString());
                         phase = 1;
                         return;
@@ -103,6 +108,8 @@ public final class ConnectedMarketVerification implements ModInitializer {
                                 || listing.pokemonDetails.evs().isEmpty())
                             throw new IllegalStateException("O anúncio não preservou os dados IV/EV do Pokémon.");
                         pokemonListingId = listing.id;
+                        openPokemonListing(player, listing.id);
+                        verifyPokemonGui(player, "detalhes do anúncio");
                         market.cancelListing(player, listing.id);
                         MarketTransaction claim = market.claims(player.getUuid()).stream()
                                 .filter(value -> "pokemon".equals(value.assetType)).findFirst()
@@ -163,7 +170,7 @@ public final class ConnectedMarketVerification implements ModInitializer {
                         result.put("marketGuiOpened", true);
                         result.put("economyAvailable", market.economyAvailable());
                         result.put("pokemonListingCancelledAndClaimed", pokemonListingId != null && pokemonClaimId != null);
-                        result.put("pokemonStatsDisplayed", true);
+                        result.put("pokemonGuiIconsAndDetailsVerified", true);
                         result.put("itemListingCancelledAndClaimed", itemListingId != null && itemClaimId != null);
                         result.put("restoredDiamondCount", diamonds);
                         result.put("fixedPricePurchaseSettled", sales.fixedPurchase());
@@ -268,6 +275,43 @@ public final class ConnectedMarketVerification implements ModInitializer {
                     net.minecraft.server.network.ServerPlayerEntity.class)) return method;
         }
         throw new NoSuchMethodException(name);
+    }
+
+    private static void openPokemonBox(net.minecraft.server.network.ServerPlayerEntity player, int box)
+            throws ReflectiveOperationException {
+        Method method = MarketPlayerGui.class.getDeclaredMethod("showBoxes",
+                net.minecraft.server.network.ServerPlayerEntity.class, int.class);
+        method.setAccessible(true);
+        method.invoke(null, player, box);
+    }
+
+    private static void openPokemonListing(net.minecraft.server.network.ServerPlayerEntity player, String listingId)
+            throws ReflectiveOperationException {
+        Method method = MarketPlayerGui.class.getDeclaredMethod("showListing",
+                net.minecraft.server.network.ServerPlayerEntity.class, String.class, int.class);
+        method.setAccessible(true);
+        method.invoke(null, player, listingId, 0);
+    }
+
+    private static void verifyPokemonGui(net.minecraft.server.network.ServerPlayerEntity player, String screen) {
+        ItemStack icon = ItemStack.EMPTY;
+        for (var slot : player.currentScreenHandler.slots) {
+            ItemStack candidate = slot.getStack();
+            if (candidate.getItem() instanceof PokemonItem) {
+                icon = candidate;
+                break;
+            }
+        }
+        if (icon.isEmpty())
+            throw new IllegalStateException("A tela de " + screen + " não enviou o ícone do Pokémon.");
+        var lore = icon.get(DataComponentTypes.LORE);
+        if (lore == null)
+            throw new IllegalStateException("A tela de " + screen + " não enviou o tooltip do Pokémon.");
+        String details = String.join("\n", lore.lines().stream().map(line -> line.getString()).toList());
+        for (String field : List.of("Nível:", "Natureza:", "IVs:", "EVs:", "Tamanho:")) {
+            if (!details.contains(field))
+                throw new IllegalStateException("O tooltip de " + screen + " não contém " + field);
+        }
     }
 
     private static MarketStore marketStore(MarketService market) throws ReflectiveOperationException {

@@ -5,11 +5,17 @@ import net.minecraft.server.MinecraftServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -29,17 +35,22 @@ class WebPanelServerHttpTest {
 
     @BeforeEach
     void startPanel() throws Exception {
-        http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 8);
+        InetAddress bindAddress = InetAddress.getByAddress(new byte[4]);
+        assertInstanceOf(Inet4Address.class, bindAddress);
+        assertEquals("0.0.0.0", bindAddress.getHostAddress());
+        http = HttpServer.create(new InetSocketAddress(bindAddress, 0), 8);
         port = http.getAddress().getPort();
         Constructor<WebPanelServer> constructor = WebPanelServer.class.getDeclaredConstructor(
-                MinecraftServer.class, int.class, String.class, String.class, String.class, Path.class, Path.class, HttpServer.class);
+                MinecraftServer.class, int.class, String.class, String.class, String.class, String.class,
+                Path.class, Path.class, HttpServer.class);
         constructor.setAccessible(true);
-        WebPanelServer panel = constructor.newInstance(null, port, "", TOKEN, VIEWER_TOKEN,
+        WebPanelServer panel = constructor.newInstance(null, port, "", directOrigin(), TOKEN, VIEWER_TOKEN,
                 Path.of("unused-token"), Path.of("unused-view-token"), http);
         Field current = WebPanelServer.class.getDeclaredField("current");
         current.setAccessible(true);
         current.set(null, panel);
         http.start();
+        assertTrue(http.getAddress().getAddress().isAnyLocalAddress());
     }
 
     @AfterEach
@@ -127,6 +138,42 @@ class WebPanelServerHttpTest {
     }
 
     @Test
+    void permitsOnlyTheExplicitlyConfiguredNetworkOrigin() throws Exception {
+        String body = "{\"token\":\"" + TOKEN + "\"}";
+        assertEquals(200, sendWithHost("panel.example:" + port, directOrigin(), body));
+        assertEquals(403, sendWithHost("panel.example:" + port, "http://evil.example", body));
+        assertEquals(403, sendWithHost("unlisted.example:" + port,
+                "http://unlisted.example:" + port, body));
+    }
+
+    @Test
+    void httpOriginMustBeAnExactBareOriginOnThePanelPort() throws Exception {
+        var properties = new java.util.Properties();
+        properties.setProperty("httpOrigin", directOrigin());
+        assertEquals(directOrigin(), WebPanelServer.readHttpOrigin(properties, port));
+
+        properties.setProperty("httpOrigin", "http://panel.example:" + (port == 65535 ? 65534 : port + 1));
+        assertThrows(java.io.IOException.class, () -> WebPanelServer.readHttpOrigin(properties, port));
+        properties.setProperty("httpOrigin", directOrigin() + "/admin");
+        assertThrows(java.io.IOException.class, () -> WebPanelServer.readHttpOrigin(properties, port));
+        properties.setProperty("httpOrigin", "http://localhost:" + port);
+        assertThrows(java.io.IOException.class, () -> WebPanelServer.readHttpOrigin(properties, port));
+    }
+
+    @Test
+    void newSettingsDefaultToTheIpv4PanelPort(@TempDir Path tempDirectory) throws Exception {
+        Path settings = tempDirectory.resolve("world/generation-control/web.properties");
+        var loadSettings = WebPanelServer.class.getDeclaredMethod("loadSettings", Path.class);
+        loadSettings.setAccessible(true);
+
+        var properties = (java.util.Properties) loadSettings.invoke(null, settings);
+
+        assertEquals("18765", properties.getProperty("port"));
+        assertEquals("", properties.getProperty("httpOrigin"));
+        assertTrue(java.nio.file.Files.readString(settings).contains("bind 0.0.0.0"));
+    }
+
+    @Test
     void rejectsMalformedAndOversizedJsonRequests() throws Exception {
         HttpResponse<String> malformed = send("POST", "/api/session", "{", null, origin());
         assertEquals(400, malformed.statusCode());
@@ -153,6 +200,28 @@ class WebPanelServerHttpTest {
     }
 
     private String origin() { return "http://127.0.0.1:" + port; }
+    private String directOrigin() { return "http://panel.example:" + port; }
+
+    private int sendWithHost(String host, String origin, String body) throws Exception {
+        byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
+        String request = "POST /api/session HTTP/1.1\r\n"
+                + "Host: " + host + "\r\n"
+                + "Origin: " + origin + "\r\n"
+                + "Content-Type: application/json; charset=utf-8\r\n"
+                + "Content-Length: " + bodyBytes.length + "\r\n"
+                + "Connection: close\r\n\r\n";
+        try (Socket socket = new Socket("127.0.0.1", port)) {
+            socket.setSoTimeout(3000);
+            socket.getOutputStream().write(request.getBytes(StandardCharsets.UTF_8));
+            socket.getOutputStream().write(bodyBytes);
+            socket.getOutputStream().flush();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
+                String status = reader.readLine();
+                return Integer.parseInt(status.split(" ")[1]);
+            }
+        }
+    }
 
     private HttpResponse<String> send(String method, String path, String body, String cookie, String origin) throws Exception {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(origin() + path));

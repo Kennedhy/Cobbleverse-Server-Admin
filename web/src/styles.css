@@ -285,7 +285,6 @@ td > input, td > select { height: 35px; }
 .pc-progress-save-row .field-hint { max-width: 620px; }
 .trainer-page-tabs { display: flex; flex-wrap: wrap; gap: 9px; margin: 0 0 18px; padding-bottom: 11px; border-bottom: 2px solid var(--border); }
 .trainer-page-tabs .button { min-height: 38px; }
-.wild-combat-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 9px; margin-top: 22px; }
 .history-table-wrap { max-height: 520px; overflow: auto; }
 .history-table-wrap td { vertical-align: middle; white-space: nowrap; }
 .history-table-wrap td:first-child strong, .history-table-wrap td:first-child small { display: block; }

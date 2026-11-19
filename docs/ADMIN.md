@@ -3,8 +3,8 @@
 ## Primeiro acesso
 
 1. Inicie o servidor Fabric com o addon instalado somente no servidor.
-2. Execute `/geracoes web` no console ou como operador. O comando mostra o endereço local e os caminhos dos tokens compartilhados.
-3. Abra o painel por HTTPS privado ou pelo endereço local do túnel SSH descrito abaixo. Informe uma credencial:
+2. Execute `/geracoes web` no console ou como operador. O comando mostra os endereços disponíveis e os caminhos dos tokens compartilhados.
+3. Abra o painel por HTTPS privado, pelo endereço local do túnel SSH ou pela origem HTTP privada configurada. Informe uma credencial:
    - `web-access.token`: administrador compartilhado inicial; permite alterar, validar, salvar, restaurar e descartar configurações, além de gerenciar Pokémon nos PCs.
    - `web-view-access.token`: consulta compartilhada inicial; permite ver estado, PCs, histórico e usar o simulador, mas não alterar configurações nem Pokémon.
 4. Mantenha os arquivos privados. Não coloque tokens em URL, log público, captura de tela ou conversa.
@@ -23,7 +23,18 @@ Revogar uma credencial encerra as sessões correspondentes. Com pelo menos um ad
 
 ## Acesso remoto seguro para máquina dedicada
 
-O painel escuta em `127.0.0.1`. Você pode entrar por um endereço HTTPS privado ou usar um túnel SSH. Mantenha a porta do painel fechada no roteador e no firewall público.
+O painel escuta em `0.0.0.0` (todas as interfaces IPv4), mas só atende endereços locais ou origens explicitamente configuradas em `web.properties`. Restrinja a porta no firewall à rede administrativa/VPN e não a encaminhe pela internet nem a jogadores. Acesso HTTP direto não cifra tokens nem cookies de sessão; prefira HTTPS privado ou túnel SSH.
+
+### Acesso direto por IP privado (HTTP sem TLS)
+
+Para liberar acesso direto pela LAN, configure a origem exata do navegador e uma porta não bloqueada pelos navegadores em `<mundo>/generation-control/web.properties`:
+
+```properties
+port=18765
+httpOrigin=http://192.168.1.20:18765
+```
+
+Substitua `192.168.1.20` pelo IP privado do servidor. A origem precisa usar a mesma porta de `port`; só esse `Host`/`Origin` será aceito. Reinicie o Minecraft e permita a porta apenas na sub-rede administrativa ou VPN. Não use HTTP em redes públicas ou não confiáveis: tokens e sessões trafegam sem criptografia.
 
 ### Opção recomendada: endereço privado com Tailscale Serve
 
@@ -33,7 +44,7 @@ O painel escuta em `127.0.0.1`. Você pode entrar por um endereço HTTPS privado
 3. Na máquina do Minecraft, com o painel em execução, publique a porta local na tailnet:
 
    ```sh
-   tailscale serve --bg http://127.0.0.1:1
+   tailscale serve --bg http://127.0.0.1:18765
    tailscale serve status
    ```
 
@@ -47,7 +58,7 @@ O painel escuta em `127.0.0.1`. Você pode entrar por um endereço HTTPS privado
 
 O Serve fornece HTTPS dentro da tailnet. Não ative Tailscale Funnel para este painel. Consulte os requisitos de [HTTPS e acesso à tailnet](https://tailscale.com/docs/features/tailscale-serve) e a [referência atual do comando](https://tailscale.com/docs/reference/tailscale-cli/serve).
 
-Você também pode usar um proxy HTTPS já instalado no mesmo host. Configure um hostname exclusivo para o painel, encaminhe a raiz para `http://127.0.0.1:1`, preserve o cabeçalho `Host` do navegador e restrinja a entrada à rede administrativa. O addon valida o endereço configurado e a origem de cada alteração, sem confiar em cabeçalhos `X-Forwarded-*`. O cookie remoto recebe `Secure`. [Documentação do proxy reverso do Caddy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy).
+Você também pode usar um proxy HTTPS já instalado no mesmo host. Configure um hostname exclusivo para o painel, encaminhe a raiz para `http://127.0.0.1:18765`, preserve o cabeçalho `Host` do navegador e restrinja a entrada à rede administrativa. O addon valida o endereço configurado e a origem de cada alteração, sem confiar em cabeçalhos `X-Forwarded-*`. O cookie remoto recebe `Secure`. [Documentação do proxy reverso do Caddy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy).
 
 ### Helper do Windows
 
@@ -59,7 +70,7 @@ Com OpenSSH e um alias configurado no `~/.ssh/config`:
 .\tools\open-admin-tunnel.ps1 -Server cobbleverse -OpenBrowser
 ```
 
-O helper encaminha para a porta 1 do servidor por padrão. Use `-RemotePort` se o mundo tiver outra porta em `web.properties`. O helper escolhe uma porta loopback livre, verifica a resposta do painel e mostra a URL local. Para buscar o token por SSH e copiá-lo para a área de transferência sem exibi-lo no terminal:
+O helper encaminha para a porta 18765 do servidor por padrão. Use `-RemotePort` se o mundo tiver outra porta em `web.properties`. O helper escolhe uma porta loopback livre, verifica a resposta do painel e mostra a URL local. Para buscar o token por SSH e copiá-lo para a área de transferência sem exibi-lo no terminal:
 
 ```powershell
 .\tools\open-admin-tunnel.ps1 `
@@ -91,7 +102,7 @@ Em qualquer cliente com OpenSSH. Para o token de consulta, troque o caminho remo
 
 ```sh
 ssh -N -T -o ExitOnForwardFailure=yes \
-  -L 127.0.0.1:18765:127.0.0.1:1 admin@host-privado
+  -L 127.0.0.1:18765:127.0.0.1:18765 admin@host-privado
 ```
 
 Com esse processo ativo, abra `http://127.0.0.1:18765` no computador administrador. Para obter o token, leia o arquivo por SSH/SFTP ou use o helper do Windows.
@@ -102,13 +113,14 @@ O arquivo `<mundo>/generation-control/web.properties` controla o painel:
 
 ```properties
 enabled=true
-port=0001
+port=18765
+httpOrigin=
 httpsOrigin=
 ```
 
-`0001` corresponde à porta TCP 1. Navegadores bloqueiam HTTP direto nessa porta, inclusive com zeros à esquerda. Use o endereço HTTPS privado ou a porta local do túnel. Em Linux, o processo Java precisa de permissão para abrir a porta 1 quando ela estiver abaixo de `ip_unprivileged_port_start`. Mundos com uma porta já gravada em `web.properties` usam esse valor. [Fetch Standard](https://fetch.spec.whatwg.org/#port-blocking) · [Documentação do kernel Linux](https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html).
+`httpOrigin` é opcional e permite um único endereço HTTP direto, sem caminho, usando a mesma porta configurada. Deixe vazio para aceitar apenas acesso local por HTTP; `httpsOrigin` continua configurando o endereço HTTPS de um proxy reverso. A porta padrão é `18765`. Mundos com uma porta já gravada em `web.properties` mantêm esse valor; atualize `port` e `httpOrigin` juntos antes de liberar acesso direto.
 
-Reinicie o servidor após mudar qualquer opção deste arquivo. Deixe `httpsOrigin` vazio para usar somente o acesso local ou por SSH. Uma alteração feita no navegador é salva como revisão pendente. Use **Validar** e **Salvar**. Depois de salvar, o painel pode aplicar **XP, limites, captura, taxa shiny e limites lendários** ao servidor em execução com **Aplicar ao vivo**. Isso inclui multiplicadores global e por jogador/grupo, o modo e comportamento do limite, o multiplicador de captura, o adicional para lendários, os tetos globais por espécie/forma e a taxa shiny. O efeito das Poké Bolas é preservado. O teto pertence ao mundo inteiro, e não a cada jogador. A contagem usa Pokémon nas equipes, nos PCs salvos (inclusive offline) e em custódia no GTS; não inclui lendários selvagens ainda soltos. Use `-1` para permitir vários. Na inicialização, a leitura dos dados ocorre em lotes pequenos; enquanto a contagem não estiver pronta ou se um arquivo falhar, capturas de espécies com teto finito ficam bloqueadas, inclusive com Master Ball. A taxa shiny usa a configuração global do Cobblemon e também afeta outros sistemas que consultem essa configuração. Se o Cobblemon estiver usando um calculador de captura diferente do padrão, a validação recusa a política de captura e não aplica parcialmente as outras opções.
+Reinicie o servidor após mudar qualquer opção deste arquivo. Deixe `httpOrigin` vazio para bloquear acesso HTTP direto remoto; prefira `httpsOrigin` com proxy privado ou SSH. Uma alteração feita no navegador é salva como revisão pendente. Use **Validar** e **Salvar**. Depois de salvar, o painel pode aplicar **XP, limites, captura, taxa shiny e limites lendários** ao servidor em execução com **Aplicar ao vivo**. Isso inclui multiplicadores global e por jogador/grupo, o modo e comportamento do limite, o multiplicador de captura, o adicional para lendários, os tetos globais por espécie/forma e a taxa shiny. O efeito das Poké Bolas é preservado. O teto pertence ao mundo inteiro, e não a cada jogador. A contagem usa Pokémon nas equipes, nos PCs salvos (inclusive offline) e em custódia no GTS; não inclui lendários selvagens ainda soltos. Use `-1` para permitir vários. Na inicialização, a leitura dos dados ocorre em lotes pequenos; enquanto a contagem não estiver pronta ou se um arquivo falhar, capturas de espécies com teto finito ficam bloqueadas, inclusive com Master Ball. A taxa shiny usa a configuração global do Cobblemon e também afeta outros sistemas que consultem essa configuração. Se o Cobblemon estiver usando um calculador de captura diferente do padrão, a validação recusa a política de captura e não aplica parcialmente as outras opções.
 
 **Gerações, espécies permitidas, ginásios, equipes, datapacks e regras de mundo continuam aguardando o reinício.** O painel mostra essa diferença entre a revisão salva e as regras em execução. Descartar a revisão pendente também restaura XP, níveis, captura, shiny e limites lendários ao estado salvo ativo. A revisão anterior continua disponível para restauração pelo painel.
 
@@ -124,9 +136,7 @@ Na aba **Dificuldade por grupos**, crie grupos de jogadores e de treinadores. At
 
 ## Pokémon selvagens
 
-Na página **Pokémon selvagens**, administradores podem configurar o Fight or Flight que já vem no modpack: reação a provocações, ataques sem provocação, exigência de pouca luz, níveis mínimos, limiares de agressividade, ataques à distância e limites de dano corpo a corpo/à distância. Isso controla ataques fora das batalhas por turnos. Credenciais viewer podem consultar os valores, mas só administradores podem salvá-los.
-
-O painel edita apenas os campos conhecidos de config/fightorflight.json5, preserva comentários e as demais opções do mod e recusa salvar se o arquivo tiver sido alterado fora do painel desde a leitura. O Fight or Flight carrega essa configuração na inicialização; reinicie o servidor depois de salvar para aplicar os novos valores. Se o mod não estiver carregado ou a versão não fornecer esses campos, o painel mostra o motivo e não altera o arquivo.
+O Cobbleverse 1.8.0 removeu o Fight or Flight. Por isso, o painel desta versão não oferece controles de agressividade desse mod nem altera `config/fightorflight.json5`. As opções desse recurso documentadas em versões antigas aplicavam-se somente ao Cobbleverse 1.7.x.
 
 ## Progressão individual
 

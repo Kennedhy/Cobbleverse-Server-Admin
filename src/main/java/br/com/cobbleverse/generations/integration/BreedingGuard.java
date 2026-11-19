@@ -10,7 +10,7 @@ import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
-/** Cobbreeding 2.2.2 consumes the egg after emitting its cancellable event.
+/** Cobbreeding consumes the egg after emitting its cancellable event.
  * Block the inventory tick before that point, preserving the complete item. */
 public final class BreedingGuard {
     private static Method extract;

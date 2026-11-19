@@ -17,7 +17,12 @@ public abstract class StarterHandlerMixin {
         List<StarterCategory> filtered = new ArrayList<>();
         for (StarterCategory category : cir.getReturnValue()) {
             var pokemon = category.getPokemon().stream().filter(CobblemonIntegration::allowed).toList();
-            if (!pokemon.isEmpty()) filtered.add(new StarterCategory(category.getName(), category.getDisplayName(), pokemon));
+            if (!pokemon.isEmpty()) filtered.add(category.copy(
+                    category.getName(),
+                    category.getOrder(),
+                    category.getDisplayName(),
+                    pokemon,
+                    category.getRandomStarter()));
         }
         cir.setReturnValue(filtered);
     }

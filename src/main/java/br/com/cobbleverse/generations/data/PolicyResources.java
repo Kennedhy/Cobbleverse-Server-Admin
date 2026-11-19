@@ -12,7 +12,7 @@ import java.util.*;
 
 /** A highest-priority, in-memory datapack. Original ZIPs are never edited. */
 public final class PolicyResources extends AbstractFileResourcePack {
-    private static final List<String> SHARED_PREFIXES = List.of("species", "species_additions", "spawn_pool_world");
+    private static final List<String> SHARED_PREFIXES = List.of("species", "species_additions", "spawn_pool_world", "habitat_pools");
     private final Map<Identifier, byte[]> files;
     public static volatile int transformedFiles;
     public static volatile int transformedTeams;
@@ -133,18 +133,11 @@ public final class PolicyResources extends AbstractFileResourcePack {
             if (json == null) continue;
             boolean changed = false;
             if (path.startsWith("spawn_pool_world/") && json.has("spawns")) {
-                JsonArray filtered = new JsonArray();
-                for (JsonElement spawn : json.getAsJsonArray("spawns")) {
-                    JsonObject detail = spawn.getAsJsonObject();
-                    if (!detail.has("pokemon") || catalog.allowed(rules, detail.get("pokemon").getAsString())) filtered.add(detail);
-                }
-                changed = filtered.size() != json.getAsJsonArray("spawns").size();
-                json.add("spawns", filtered);
+                changed = SpawnResourcePolicy.filterWorldSpawnPool(json, properties -> catalog.allowed(rules, properties));
+            } else if (path.startsWith("habitat_pools/") && json.has("spawns")) {
+                changed = SpawnResourcePolicy.filterHabitatPool(json, properties -> catalog.allowed(rules, properties));
             } else if (id.getNamespace().equals("cobblemonraiddens") && path.startsWith("raid/boss/") && json.has("pokemon")) {
-                JsonObject pokemon = json.getAsJsonObject("pokemon");
-                String properties = pokemon.get("species").getAsString();
-                if (pokemon.has("form")) properties += " form=" + pokemon.get("form").getAsString();
-                if (!catalog.allowed(rules, properties)) { json.addProperty("weight", 0); changed = true; }
+                changed = RaidResourcePolicy.filterBoss(json, properties -> catalog.allowed(rules, properties));
             } else if (id.getNamespace().equals("rctmod") && path.startsWith("trainers/") && json.has("team")) {
                 rawTrainers.put(id,json.toString());
                 changed = rules.filterTeams() && adaptTeam(id.toString(),json, catalog, rules);

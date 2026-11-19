@@ -4,7 +4,7 @@ Fabric **server-only** addon for managing Cobbleverse rules through a private we
 
 [Leia em português](README.md)
 
-> **Version 0.7.0 — preview.** First use it on a copy of the server and world. See the [validation status](docs/TESTING.md).
+> **Version 0.8.0 — preview for Cobbleverse 1.8.0.** First use it on a copy of the server and world. See the [validation status](docs/TESTING.md).
 
 ## Features
 
@@ -50,9 +50,9 @@ The market requires CobbleDollars 2.0.0 Beta 5.1. Its player interface uses SGui
 2. Download the JAR and the `open-admin-tunnel.ps1` and `prepare_server_mods.py` tools from [Releases](https://github.com/Kennedhy/Cobbleverse-Server-Admin/releases). Older releases may not include these files; download them from the matching source archive instead.
 3. Put the JAR in the Fabric server's `mods/` folder only. Do not install it on clients.
 4. Start the server and run `/geracoes web` as an administrator to get the panel address and paths for the initial shared credentials.
-5. Open the panel through private HTTPS or an SSH tunnel and use the initial admin token. Create individual tokens from the server console. Viewers can inspect players, PCs, and history, and use the simulator. [Panel administration](docs/ADMIN.md)
+5. Open the panel through private HTTPS, an SSH tunnel, or the configured private HTTP origin. Use the initial admin token and create individual tokens from the server console. Viewers can inspect players, PCs, and history, and use the simulator. [Panel administration](docs/ADMIN.md)
 
-The panel listens on `127.0.0.1:1` by default (`port=0001`). Browsers block direct HTTP access to port 1. To change the port, edit `<world>/generation-control/web.properties` and restart the server.
+The panel listens on `0.0.0.0:18765` (all IPv4 interfaces) by default, but direct remote access requires the exact origin in `httpOrigin`. Restrict the port with a firewall/VPN: direct HTTP does not encrypt tokens or sessions. Prefer private HTTPS or an SSH tunnel for remote access.
 
 ## Build from source
 

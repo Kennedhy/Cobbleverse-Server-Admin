@@ -1,4 +1,4 @@
-import { Globe2, Store, Swords, X } from 'lucide-react';
+import { Globe2, Store, X } from 'lucide-react';
 import { PixelIcon } from './PixelIcon.jsx';
 
 const items = [
@@ -9,7 +9,6 @@ const items = [
   ['capture', 'Captura', 'ball'],
   ['trainers', 'Treinadores', 'trainer'],
   ['pc', 'PC dos jogadores', 'monitor'],
-  ['wildCombat', 'Pokémon selvagens', Swords],
   ['market', 'Mercado Pokémon', Store],
   ['history', 'Histórico', 'clock'],
   ['world', 'Mundo', Globe2],

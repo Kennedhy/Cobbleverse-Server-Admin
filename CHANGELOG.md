@@ -2,7 +2,16 @@
 
 Notable changes for each release are recorded here. Versions follow `MAJOR.MINOR.PATCH` and are tagged as `vX.Y.Z`.
 
-## [Unreleased]
+## [0.8.0] — 2026-11-19 — Preview
+
+- Target the Cobbleverse 1.8.0 stack: Cobblemon 1.8.4, Fabric Loader 0.19.5, RCT 0.19.2-beta, and RCT API 0.16.2-beta.
+- Preserve the new starter-category order and random-starter setting when generation rules filter starter choices.
+- Remove the Fight or Flight settings page and API route because Cobbleverse 1.8.0 removes that mod; its aggression controls are not represented as supported addon features.
+- Filter nested Alpha herd members and habitat-pool spawn records, including species forms and modifiers.
+- Adapt Raid Dens policy checks to its asynchronous boss cache, applying forbidden species as zero-weight datapack resources without synchronously resolving every boss during a roll.
+- Bind the web panel on `0.0.0.0`, require an explicit HTTP origin for direct network access, and use port 18765 by default; keep credentials protected by origin checks and document private-network-only HTTP.
+- Show Cobblemon Pokémon items and fuller hover details in the market and PC selection screens, including nature, ability, size, IVs, EVs, and moves, without adding client mods or redistributing Pokémon sprites.
+- Fix a Gradle build-ordering defect where the sources archive read the generated web panel without declaring the dependency, so a full `gradlew build` failed when the web output was missing; the sources archive also no longer packages the generated panel.
 
 ## [0.7.0] — 2026-11-14 — Preview
 
@@ -19,7 +28,6 @@ Notable changes for each release are recorded here. Versions follow `MAJOR.MINOR
 - Bundle SGui as a server-only dependency so players do not need to install this addon or an extra client mod.
 - Index RCT player/trainer groups and difficulty profiles on configuration changes, cache filtered raid weight tables, avoid unnecessary Primal property allocations during battles, and use direct transaction lookup when cleaning player inventory markers.
 - Retry transient busy responses a bounded number of times for read-only player PC queries, with cancellation when the user changes the selected player or page.
-- Add a private-panel page for Fight or Flight wild aggression thresholds, attack levels, darkness behavior, optional ranged attacks, and direct melee/ranged damage to players; preserve untouched config values and require a server restart to apply edits.
 - Refresh verification checksums for Fabric API artifacts republished upstream and validate them against the matching packaged release.
 
 ## [0.6.0] — 2026-11-13 — Preview

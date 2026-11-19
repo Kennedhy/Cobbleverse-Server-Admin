@@ -42,8 +42,17 @@ public final class RaidGuard {
         return CobblemonIntegration.allowed(properties);
     }
 
+    /** Raid Dens 0.13.5 loads boss records asynchronously; a known cache miss is pending, not forbidden. */
+    public static boolean allowed(Identifier id) {
+        if (!GenerationControl.ready()) return true;
+        if (id == null) return false;
+        RaidBoss boss = RaidRegistry.getRaidBoss(id);
+        return boss != null ? allowed(boss) : RaidRegistry.exists(id);
+    }
+
     /** Upstream binary search can choose a zero-weight entry when the roll is zero.
-     * Build a positive-weight distribution containing only legal encounters. */
+     * Boss resources already carry policy-filtered weights; avoid resolving every boss
+     * through Raid Dens' asynchronous record cache while building a distribution. */
     public static Identifier roll(Random random,float[] cumulative,int[] indexes) {
         var rules = br.com.cobbleverse.generations.GenerationControl.rules();
         FilteredWeightTable<Identifier> distribution = rollTable(rules, cumulative, indexes);
@@ -68,7 +77,7 @@ public final class RaidGuard {
         int[] indexesCopy = Arrays.copyOf(indexes, indexes.length);
         FilteredWeightTable<Identifier> distribution = FilteredWeightTable.build(weightsCopy, indexesCopy,
                 index -> RaidRegistry.RAID_LIST.get(index),
-                id -> allowed(RaidRegistry.getRaidBoss(id)));
+                id -> true);
         ROLL_TABLES.add(0, new RollTable(rules, weightsCopy, indexesCopy, distribution));
         if (ROLL_TABLES.size() > MAX_CACHED_ROLL_TABLES) ROLL_TABLES.remove(ROLL_TABLES.size() - 1);
         return distribution;
