@@ -7,7 +7,8 @@ O projeto está sendo migrado para Cobbleverse 1.8.0 (Minecraft 1.21.1, Cobblemo
 - `.\gradlew.bat --no-daemon --max-workers=1 build` passou com **72 testes, 0 falhas, 0 erros**, incluindo `sourcesJar`; `test remapJar remapVerificationJar --rerun-tasks` também passou do zero.
 - `tools/verify_server_jar.py` confirmou o artefato server-only `cobbleverse-generation-control-0.8.0.jar`: 185 classes, 37 mixins, 743.173 bytes e assets web presentes. SHA-256: `0053877ad0a5f2e695be2fb6f44a24684a43b3561fa7d33f73c86e089cf586d4`.
 - A auditoria do painel e o smoke conectado de captura desta versão estão descritos nas seções de 19/11/2026 abaixo. Os limites conhecidos continuam registrados no fim da migração.
-- O workflow de build e a publicação da release são executados após o envio da tag `v0.8.0`.
+- O workflow [Build 44587473524](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/44587473524), no commit `57d102b`, passou em `test remapJar remapVerificationJar` e na auditoria server-only. O workflow [Release 44587490437](https://github.com/Kennedhy/Cobbleverse-Server-Admin/actions/runs/44587490437) publicou a tag `v0.8.0` como pré-release.
+- Baixei os quatro assets da release e o `SHA256SUMS.txt` conferiu para os três arquivos listados. O JAR publicado passou novamente no verificador server-only: 185 classes, 37 mixins, 743.158 bytes, assets web presentes. SHA-256: `369b7baf2f926493a995856a63ca75e9adedd08565b37f2a15dd6765be1292c0`. A diferença de 15 bytes em relação ao build local vem da recompilação no CI.
 
 ## Migração Cobbleverse 1.8.0 — validação local (2026-11-18/19)
 
@@ -193,8 +194,10 @@ Esse teste não validou host dedicado via SSH, carga real, migração de progres
 
 | Área | Estado | Observação |
 | --- | --- | --- |
-| Compilação e empacotamento 0.7.0 | Build `43641701925` concluído | Testes automatizados, JAR remapeado e auditoria server-only; assets web presentes |
-| Metadados server-only | Verificados no JAR 0.7.0 | 184 classes, 37 mixins e assets web; sem classes client-only |
+| Compilação e empacotamento 0.8.0 | Build `44587473524` concluído | Testes automatizados, JAR remapeado, auditoria server-only e assets web presentes; `gradlew build` local também passa |
+| Metadados server-only | Verificados no JAR 0.8.0 | 185 classes, 37 mixins e assets web; sem classes client-only |
+| Painel web (dez páginas) | Navegador real em 19/11/2026 | Todas as páginas renderizaram sem erro de console; leituras 200, escrita anônima 401 e escrita com credencial de consulta 403 |
+| Captura por multiplicador | Fixture conectado em 19/11/2026 | 2.000 amostras por combinação; 12,95%/22,7% (Poké) e 18,35%/41,7% (Ultra) em 1×/2×; chance zero e Master Ball garantida |
 | Login, dashboard e reinício | Smoke local 0.6.0 observado | Login admin, players, reinício disponível via supervisor; sem campos de monitoramento de servidor |
 | Pokémon selvagens | Removido em 1.8.0 | Fight or Flight não está no Cobbleverse 1.8.0; o smoke histórico abaixo é somente para o pack 1.7.x |
 | Aparições e recompensas | Smoke local 0.6.0 observado | API RCT e CobbleDollars; mudança de spawn aplicada e restaurada |
